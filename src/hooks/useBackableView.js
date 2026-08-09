@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { pushInternalView, popInternalViewById } from "./internalViewFlag";
+import { pushInternalView, popInternalViewById, discardTopEntries } from "./internalViewFlag";
 
 // ── useBackableView ────────────────────────────────────────────────────────
 // Membuat tombol Back bawaan HP (fisik/gesture Android) menutup SATU langkah
@@ -74,4 +74,22 @@ export function goBack(fallbackFn) {
 export function pushHistoryStep(closeFn) {
   window.history.pushState({ __view: true }, "");
   return pushInternalView(closeFn);
+}
+
+// ── discardHistorySteps ────────────────────────────────────────────────────
+// Dipakai saat form/alur multi-step perlu lompat balik BANYAK langkah
+// sekaligus secara programatik (mis. tombol "Mulai Baru" yang langsung
+// mereset ke step paling awal, bukan mundur step-demi-step lewat tombol
+// "Kembali"). Membuang N entri history yang sudah didorong pushHistoryStep,
+// lalu menyinkronkan posisi browser lewat window.history.go(-n) — supaya
+// riwayat browser & step yang sedang tampil tetap konsisten, dan tombol
+// back HP berikutnya tidak "nyasar" ke langkah lama yang sudah tidak relevan.
+//
+// Panggil ini SEBELUM mengubah state step ke tujuan akhir secara langsung
+// (mis. setStep("sop")) — kode pemanggil tetap bertanggung jawab mengubah
+// state-nya sendiri, fungsi ini hanya membereskan sisi history-nya.
+export function discardHistorySteps(n) {
+  if (n <= 0) return;
+  discardTopEntries(n);
+  window.history.go(-n);
 }

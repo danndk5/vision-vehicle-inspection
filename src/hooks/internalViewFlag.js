@@ -17,11 +17,21 @@
 let stack = [];
 let nextId = 1;
 let listenerAttached = false;
+// Berapa popstate berikutnya yang harus DIABAIKAN oleh listener global —
+// dipakai saat kita sengaja melompat banyak langkah sekaligus secara
+// programatik (lihat discardTopEntries) dan sudah menangani perubahan state
+// itu sendiri, jadi popstate yang muncul akibat window.history.go(-n) tidak
+// perlu (dan tidak boleh) diproses lagi oleh listener biasa di bawah.
+let suppressCount = 0;
 
 function ensureGlobalListener() {
   if (listenerAttached) return;
   listenerAttached = true;
   window.addEventListener("popstate", () => {
+    if (suppressCount > 0) {
+      suppressCount -= 1;
+      return;
+    }
     const top = stack.pop();
     if (top) top.closeFn();
   });
@@ -42,6 +52,21 @@ export function pushInternalView(closeFn) {
 export function popInternalViewById(id) {
   const idx = stack.findIndex((e) => e.id === id);
   if (idx !== -1) stack.splice(idx, 1);
+}
+
+// Buang N entri PALING ATAS stack sekaligus TANPA memanggil closeFn
+// masing-masing — dipakai saat kode pemanggil sudah menangani sendiri
+// perubahan state yang setara (mis. "Mulai Baru" pada form multi-step yang
+// langsung set step ke awal), lalu berencana memanggil window.history.go(-n)
+// untuk menyinkronkan posisi browser. window.history.go(-n) hanya memicu
+// SATU event popstate di tujuan akhir (bukan n event terpisah), makanya
+// suppressCount ditambah 1 per pemanggilan — persis sejumlah popstate yang
+// akan muncul dari satu panggilan go(-n), berapa pun besar n-nya.
+export function discardTopEntries(n) {
+  for (let i = 0; i < n && stack.length > 0; i++) {
+    stack.pop();
+  }
+  suppressCount += 1;
 }
 
 // Dipakai App.jsx: true selama ada tampilan internal yang masih terbuka,
