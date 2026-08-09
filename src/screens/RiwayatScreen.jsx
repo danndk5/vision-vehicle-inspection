@@ -166,7 +166,19 @@ const RiwayatScreen = ({ role, onNav, onOpenDetail, onOpenDetailHSE, onOpenDetai
           boxShadow: theme.shadow,
         }}
       >
-        <div onClick={() => onNav("dashboard")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+        {/* ⚠️ FIX (Agustus 2026) — tombol back button jump bug:
+            Sebelumnya tombol ini memanggil onNav("dashboard"), yang lewat
+            enterDashboard() di App.jsx melakukan replaceState + pushState
+            TAMBAHAN (bukan cuma mundur 1 langkah). Efeknya: history stack
+            browser jadi tidak sinkron dengan layar yang sedang dibuka user
+            — begitu user tekan tombol kembali fisik HP sekali lagi setelah
+            ini, langsung muncul dialog "Keluar dari aplikasi?" walau user
+            masih di tengah-tengah pemakaian app.
+            Sekarang disamakan dengan SEMUA tombol "Kembali" lain di app
+            (DetailScreen, DetailHSEScreen, DetailP1Screen, dst.): cukup
+            window.history.back() — mundur 1 langkah sesuai history yang
+            sesungguhnya sudah di-push saat layar Riwayat ini dibuka. */}
+        <div onClick={() => window.history.back()} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
          <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
         </div>
         <div

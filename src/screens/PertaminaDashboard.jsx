@@ -148,11 +148,6 @@ const HealthMiniBar = ({ value, color }) => (
 );
 
 // ── Tombol "Riwayat" scoped per kategori ─────────────────────────────────────
-// Dipakai di header list tiap tab (GPS/HSE/P1), pengganti menu "Riwayat"
-// generik yang sebelumnya ada di sidebar/bottom nav (dihapus dari
-// BottomNav.jsx — Agustus 2026). Tiap tombol sudah otomatis scoped ke
-// kategori tab yang sedang aktif, jadi tidak ada lagi ambiguitas kategori
-// mana yang dibuka.
 const RiwayatButton = ({ onClick, isDesktop }) => (
   <div
     onClick={onClick}
@@ -218,7 +213,7 @@ const HEALTH_CATEGORY_COLORS = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 1: GPS & CCTV (konten lama, tidak diubah — kecuali tombol Riwayat baru)
+// TAB 1: GPS & CCTV
 // ─────────────────────────────────────────────────────────────────────────────
 const TabGPS = ({ onOpenDetail, onOpenKategori, onOpenRiwayat, isDesktop, onCountChange, onOverdueChange }) => {
   const [inspeksiList, setInspeksiList] = useState([]);
@@ -281,7 +276,15 @@ const TabGPS = ({ onOpenDetail, onOpenKategori, onOpenRiwayat, isDesktop, onCoun
   const filteredList = inspeksiList.filter((item) => {
     if (filter === "semua") return true;
     if (filter === "normal") return item.overallStatus === "Normal";
-    if (filter === "abnormal") return item.overallStatus === "Abnormal";
+    // ⚠️ FIX (Agustus 2026): sebelumnya filter "Abnormal" cuma cek
+    // overallStatus, jadi kendaraan yang SUDAH selesai diperbaiki
+    // (status === "selesai") tetap ikut muncul di sini — padahal card-nya
+    // sendiri lalu menampilkan badge "✓ Perbaikan selesai", yang
+    // bertentangan dengan makna filter "Abnormal" (harusnya = belum
+    // ditangani). Sekarang "Abnormal" secara konsisten berarti: rusak DAN
+    // belum diperbaiki. Yang sudah diperbaiki tetap bisa dilihat lewat
+    // filter "Selesai Diperbaiki" secara terpisah.
+    if (filter === "abnormal") return item.overallStatus === "Abnormal" && item.status !== "selesai";
     if (filter === "selesai") return item.status === "selesai";
     return true;
   });
@@ -771,10 +774,23 @@ const TabP1 = ({ isDesktop, onOpenDetail, onOpenRiwayat, onCountChange }) => {
   // Pie: MT Merah Putih vs MT Industri
   const merahPutih = list.filter((i) => i.kategori_mt === "merah_putih").length;
   const industri   = list.filter((i) => i.kategori_mt === "industri").length;
+  // ⚠️ FIX (Agustus 2026): sebelumnya slice pie tidak punya filterKey dan
+  // StatCard/Pie di tab ini tidak punya onClick sama sekali — beda dari
+  // TabGPS/TabHSE yang keduanya interaktif. User yang sudah terbiasa
+  // klik statistik/pie di 2 tab lain akan mengklik yang sama di sini dan
+  // tidak terjadi apa-apa, terkesan fitur ini "rusak". Disamakan sekarang:
+  // klik StatCard & klik pie/legend memfilter list di bawahnya, persis
+  // pola di TabHSE.
   const pieData = [
-    merahPutih > 0 && { name: "MT Merah Putih", value: merahPutih, color: "#6366F1" },
-    industri   > 0 && { name: "MT Industri",    value: industri,   color: "#06B6D4" },
+    merahPutih > 0 && { name: "MT Merah Putih", value: merahPutih, color: "#6366F1", filterKey: "merah_putih" },
+    industri   > 0 && { name: "MT Industri",    value: industri,   color: "#06B6D4", filterKey: "industri" },
   ].filter(Boolean);
+
+  const handlePieClick = (entry) => {
+    const key = entry?.filterKey;
+    if (!key) return;
+    setFilter((prev) => prev === key ? "semua" : key);
+  };
 
   const filteredList = list.filter((item) => {
     if (filter === "semua")   return true;
@@ -797,9 +813,12 @@ const TabP1 = ({ isDesktop, onOpenDetail, onOpenRiwayat, onCountChange }) => {
     <div style={{ padding: isDesktop ? "24px 32px" : "20px 16px" }}>
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: isDesktop ? DESKTOP_GRID_GAP : 8, marginBottom: 20 }}>
-        <StatCard value={stats.total}   label="Total Diperiksa"      color={theme.primary} bg={theme.primaryLight} isDesktop={isDesktop} />
-        <StatCard value={stats.perlu}   label="Perlu Tindak Lanjut"  color={theme.danger}  bg={theme.dangerLight}  isDesktop={isDesktop} />
-        <StatCard value={stats.selesai} label="Sudah Selesai"        color={theme.success} bg={theme.successLight} isDesktop={isDesktop} />
+        <StatCard value={stats.total}   label="Total Diperiksa"      color={theme.primary} bg={theme.primaryLight} isDesktop={isDesktop}
+          onClick={() => setFilter("semua")} />
+        <StatCard value={stats.perlu}   label="Perlu Tindak Lanjut"  color={theme.danger}  bg={theme.dangerLight}  isDesktop={isDesktop}
+          onClick={() => setFilter("perlu")} />
+        <StatCard value={stats.selesai} label="Sudah Selesai"        color={theme.success} bg={theme.successLight} isDesktop={isDesktop}
+          onClick={() => setFilter("selesai")} />
       </div>
 
       {/* Charts */}
@@ -811,22 +830,37 @@ const TabP1 = ({ isDesktop, onOpenDetail, onOpenRiwayat, onCountChange }) => {
               <div style={{ width: 120, height: 120, flexShrink: 0 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={32} outerRadius={56} paddingAngle={2}>
-                      {pieData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
+                    <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={32} outerRadius={56} paddingAngle={2}
+                      onClick={handlePieClick} cursor="pointer">
+                      {pieData.map((entry, index) => (
+                        <Cell key={index} fill={entry.color}
+                          opacity={filter === entry.filterKey || filter === "semua" ? 1 : 0.35} />
+                      ))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {pieData.map((d) => (
-                  <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: d.color }} />
+                  <div key={d.name} onClick={() => handlePieClick(d)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
+                      cursor: "pointer", opacity: filter === d.filterKey || filter === "semua" ? 1 : 0.4,
+                    }}>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: d.color,
+                      outline: filter === d.filterKey ? `2px solid ${d.color}` : "none", outlineOffset: 2 }} />
                     <div style={{ fontSize: 12, color: theme.text, fontWeight: 600 }}>{d.name}</div>
                     <div style={{ fontSize: 12, color: theme.textMuted, marginLeft: "auto" }}>
                       {d.value} ({stats.total > 0 ? Math.round((d.value / stats.total) * 100) : 0}%)
                     </div>
                   </div>
                 ))}
+                {filter !== "semua" && (
+                  <div onClick={() => setFilter("semua")}
+                    style={{ fontSize: 11, color: theme.primary, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+                    ✕ Reset filter
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -869,7 +903,7 @@ const TabP1 = ({ isDesktop, onOpenDetail, onOpenRiwayat, onCountChange }) => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <SectionLabel style={{ margin: 0 }}>Daftar Laporan Cek Random P1</SectionLabel>
-        <RiwayatButton onClick={onOpenRiwayat} />
+        <RiwayatButton onClick={onOpenRiwayat} isDesktop={isDesktop} />
       </div>
       {filteredList.length > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(auto-fill, minmax(300px, 1fr))" : "1fr", gap: isDesktop ? DESKTOP_GRID_GAP : 0 }}>
@@ -970,14 +1004,25 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: isDesktop ? 10 : 8, flexWrap: "wrap" }}>
-            <div title="Segera hadir" style={{
+            {/* ⚠️ FIX (Agustus 2026): tombol ini terlihat sama persis (cursor
+                pointer, styling identik) dengan tombol Export/Kendaraan di
+                sampingnya yang BERFUNGSI — padahal ini belum diimplementasikan
+                sama sekali. User yang klik akan bingung karena tidak terjadi
+                apa-apa, dan di mobile tooltip "title" tidak pernah muncul
+                sama sekali (title tidak tampil di touch device), jadi tidak
+                ada penjelasan sama sekali kenapa tombol ini tidak merespons.
+                Sekarang ditandai jelas sebagai belum aktif: opacity diturunkan,
+                cursor default (bukan pointer), dan label "Filter" diganti jadi
+                "Filter (segera hadir)" di desktop supaya jelas dari teks-nya,
+                bukan cuma tooltip yang tidak semua orang akan lihat. */}
+            <div style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: isDesktop ? "9px 14px" : "9px 10px", borderRadius: 10,
-              border: `1px solid ${theme.border}`, background: theme.surface, color: theme.textMuted,
-              fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+              border: `1px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.textMuted,
+              fontSize: 12.5, fontWeight: 600, cursor: "default", opacity: 0.55,
             }}>
               <Icon name="search" size={14} color={theme.textMuted} />
-              {isDesktop && "Filter"}
+              {isDesktop && "Filter (segera hadir)"}
             </div>
             <div
               onClick={() => onNav("export")}
@@ -1012,8 +1057,21 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
         <TabBar active={activeTab} onChange={onChangeTab} counts={tabCounts} />
       </div>
 
-      {/* Tab Content */}
-      {activeTab === "gps" && (
+      {/* ⚠️ FIX (Agustus 2026) — tab state hilang setiap ganti tab:
+          Sebelumnya tiap tab dirender kondisional (`{activeTab === "gps" &&
+          <TabGPS/>}`), jadi komponen tab yang tidak aktif benar-benar
+          UNMOUNT. Akibatnya: filter yang sudah dipilih user hilang tiap
+          pindah tab lalu balik lagi, data di-fetch ulang dari nol (skeleton
+          loading muncul lagi walau datanya sama persis), badge jumlah di
+          TabBar untuk HSE/P1 kosong sampai user pernah buka tab itu minimal
+          sekali, dan badge overdue di BottomNav cuma pernah dihitung kalau
+          tab GPS sempat aktif.
+          Sekarang ketiga tab di-mount SEKALIGUS sejak dashboard dibuka, dan
+          hanya disembunyikan lewat display:none saat tidak aktif. Semua
+          fetch data cukup sekali, filter & scroll tetap tersimpan per tab,
+          dan badge count/overdue langsung akurat sejak awal buka dashboard —
+          tidak menunggu user membuka tab tersebut dulu. */}
+      <div style={{ display: activeTab === "gps" ? "block" : "none" }}>
         <TabGPS
           onOpenDetail={onOpenDetail}
           onOpenKategori={onOpenKategori}
@@ -1022,23 +1080,23 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
           onCountChange={(n) => setTabCounts((p) => ({ ...p, gps: n }))}
           onOverdueChange={setOverdueCount}
         />
-      )}
-      {activeTab === "hse" && (
+      </div>
+      <div style={{ display: activeTab === "hse" ? "block" : "none" }}>
         <TabHSE
           isDesktop={isDesktop}
           onOpenDetail={onOpenDetailHSE}
           onOpenRiwayat={() => onNav("history")}
           onCountChange={(n) => setTabCounts((p) => ({ ...p, hse: n }))}
         />
-      )}
-      {activeTab === "p1" && (
+      </div>
+      <div style={{ display: activeTab === "p1" ? "block" : "none" }}>
         <TabP1
           isDesktop={isDesktop}
           onOpenDetail={onOpenDetailP1}
           onOpenRiwayat={() => onNav("history")}
           onCountChange={(n) => setTabCounts((p) => ({ ...p, p1: n }))}
         />
-      )}
+      </div>
 
       <BottomNav active="home" onNav={onNav} role="pertamina" userName="Pertamina" badges={{ maintenance: overdueCount }} />
     </div>
