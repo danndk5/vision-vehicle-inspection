@@ -38,36 +38,6 @@ const statusInfo = (insp, theme) => {
   return { label: "Normal", bg: theme.successLight, color: theme.success };
 };
 
-// ── Helper: hitung batas tanggal awal berdasarkan periode filter (sama
-// persis dengan HSEDashboard.jsx supaya perilaku filter konsisten) ──────────
-const getRangeStart = (mode) => {
-  const now = new Date();
-
-  if (mode === "minggu") {
-    const day = now.getDay();
-    const diffKeSenin = day === 0 ? 6 : day - 1;
-    const start = new Date(now);
-    start.setDate(now.getDate() - diffKeSenin);
-    start.setHours(0, 0, 0, 0);
-    return start;
-  }
-  if (mode === "bulan") {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-  if (mode === "6bulan") {
-    return new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  }
-  return null; // "semua"
-};
-
-const FILTER_OPTIONS = [
-  { value: "semua",  label: "Semua"        },
-  { value: "minggu", label: "Minggu Ini"   },
-  { value: "bulan",  label: "Bulan Ini"    },
-  { value: "6bulan", label: "6 Bulan Ini"  },
-  { value: "custom", label: "Kustom"       },
-];
-
 // ── Helper: sisa hari sampai tanggal tertentu (negatif = sudah lewat) ─────────
 const sisaHari = (tanggal) => {
   if (!tanggal) return null;
@@ -82,6 +52,20 @@ const formatTanggalSingkat = (val) => {
   if (!val) return "-";
   try { return new Date(val).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }); }
   catch { return val; }
+};
+
+// Parse timestamp dari Supabase sebagai UTC secara eksplisit. Kalau kolom
+// created_at bertipe `timestamp` (tanpa timezone), string yang dikembalikan
+// tidak punya info offset — browser jadi salah mengira itu sudah waktu
+// lokal dan tidak mengonversi, sehingga jam yang tampil di HP meleset
+// sejumlah offset timezone (mis. WITA = UTC+8). Fungsi ini memaksa string
+// tersebut dibaca sebagai UTC (kecuali memang sudah ada info offset/'Z'),
+// baru dikonversi otomatis ke waktu lokal HP saat ditampilkan lewat
+// toLocaleDateString/toLocaleTimeString.
+const parseUtc = (dateStr) => {
+  if (!dateStr) return null;
+  const hasOffset = /Z$|[+-]\d{2}:?\d{2}$/.test(dateStr);
+  return new Date(hasOffset ? dateStr : dateStr.replace(" ", "T") + "Z");
 };
 
 // ── ExpiryBanner — peringatan masa berlaku Head Truck / Tangki ────────────────
@@ -154,97 +138,6 @@ const ExpiryListModal = ({ theme, items, onClose }) => (
   </div>
 );
 
-// ── FilterBar ──────────────────────────────────────────────────────────────
-// Helper: deteksi apakah latar tema saat ini gelap (dari luminance theme.bg),
-// dipakai untuk memaksa color-scheme pada <input type="date"> supaya ikon
-// kalender & teks placeholder-nya ikut terang saat mode gelap aktif.
-const getIsDarkBg = (hex) => {
-  if (!hex || hex[0] !== "#" || hex.length < 7) return false;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.5;
-};
-
-const FilterBar = ({ theme, filterMode, setFilterMode, customStart, setCustomStart, customEnd, setCustomEnd }) => {
-  const isDarkBg = getIsDarkBg(theme.bg);
-  const dateInputStyle = {
-    width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${theme.border}`,
-    background: theme.surfaceAlt || theme.surface, color: theme.text, fontSize: 12, boxSizing: "border-box",
-    fontFamily: "'DM Sans', sans-serif", outline: "none",
-    colorScheme: isDarkBg ? "dark" : "light",
-  };
-
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-        {FILTER_OPTIONS.map((opt) => (
-          <div
-            key={opt.value}
-            onClick={() => setFilterMode(opt.value)}
-            style={{
-              flexShrink: 0, padding: "7px 14px", borderRadius: 20, cursor: "pointer",
-              fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
-              background: filterMode === opt.value ? theme.primary : theme.surface,
-              color: filterMode === opt.value ? "#fff" : theme.textMuted,
-              border: `1.5px solid ${filterMode === opt.value ? theme.primary : theme.border}`,
-            }}
-          >
-            {opt.label}
-          </div>
-        ))}
-      </div>
-
-      {filterMode === "custom" && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>Dari</div>
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              style={dateInputStyle}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>Sampai</div>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              style={dateInputStyle}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ── SearchBar — cari cepat nomor polisi dari beranda ──────────────────────────
-const SearchBar = ({ theme, value, onChange }) => (
-  <div style={{
-    display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12,
-    background: theme.surface, border: `1px solid ${theme.border}`, marginBottom: 20,
-  }}>
-    <Icon name="search" size={16} color={theme.textMuted} />
-    <input
-      type="text"
-      placeholder="Cari nomor polisi..."
-      value={value}
-      onChange={(e) => onChange(e.target.value.toUpperCase())}
-      style={{
-        flex: 1, border: "none", outline: "none", background: "transparent",
-        color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
-      }}
-    />
-    {value && (
-      <div onClick={() => onChange("")} style={{ cursor: "pointer", color: theme.textMuted, fontSize: 14 }}>✕</div>
-    )}
-  </div>
-);
-
 // ── StatCard ─────────────────────────────────────────────────────────────────
 const StatCard = ({ value, label, bg, color, onClick }) => (
   <div
@@ -307,7 +200,7 @@ const InspeksiList = ({ title, items, onBack, theme }) => (
                       {insp.perusahaan_transportir}
                     </div>
                     <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>
-                      {new Date(insp.created_at).toLocaleDateString("id-ID", {
+                      {parseUtc(insp.created_at)?.toLocaleDateString("id-ID", {
                         day: "numeric", month: "short", year: "numeric",
                         hour: "2-digit", minute: "2-digit",
                       })}
@@ -490,7 +383,6 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
           fontSize: 13, color: theme.textMuted, lineHeight: 1.6,
         }}>
           <div style={{ fontWeight: 700, color: theme.text, marginBottom: 4 }}>💡 Panduan</div>
-          <div>• Gunakan filter periode untuk melihat data per minggu/bulan/6 bulan/kustom</div>
           <div>• Klik angka untuk lihat daftar kendaraan</div>
           <div>• Gunakan <b>Pengecekan</b> untuk cek kendaraan baru</div>
           <div>• Gunakan <b>Tindak Lanjut</b> untuk tangani temuan</div>
