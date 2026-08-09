@@ -7,6 +7,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../lib/supabase";
 import { useBackableView, goBack } from "../hooks/useBackableView";
+import FadeIn from "../components/FadeIn";
 
 // Lebar tampilan dikunci seukuran HP — role ini cuma dipakai di ponsel
 // (sama seperti pola di HSEDashboard.jsx / P1Dashboard.jsx)
@@ -180,40 +181,42 @@ const InspeksiList = ({ title, items, onBack, theme }) => (
             <div style={{ fontSize: 14, color: theme.textMuted }}>Belum ada data</div>
           </Card>
         ) : (
-          items.map((insp) => {
+          items.map((insp, i) => {
             const si = statusInfo(insp, theme);
             return (
-              <Card key={insp.id} style={{ marginBottom: 12, padding: "14px 16px", background: theme.surface, borderColor: theme.border }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{
-                    width: 44, height: 44, borderRadius: 12,
-                    background: theme.primaryLight,
-                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                  }}>
-                    <Icon name="car" size={20} color={theme.primary} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>
-                      {insp.nomor_polisi}
+              <FadeIn key={insp.id} delay={i * 45}>
+                <Card style={{ marginBottom: 12, padding: "14px 16px", background: theme.surface, borderColor: theme.border }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 12,
+                      background: theme.primaryLight,
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    }}>
+                      <Icon name="car" size={20} color={theme.primary} />
                     </div>
-                    <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
-                      {insp.perusahaan_transportir}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>
+                        {insp.nomor_polisi}
+                      </div>
+                      <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
+                        {insp.perusahaan_transportir}
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>
+                        {parseUtc(insp.created_at)?.toLocaleDateString("id-ID", {
+                          day: "numeric", month: "short", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>
-                      {parseUtc(insp.created_at)?.toLocaleDateString("id-ID", {
-                        day: "numeric", month: "short", year: "numeric",
-                        hour: "2-digit", minute: "2-digit",
-                      })}
+                    <div style={{
+                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
+                      background: si.bg, color: si.color,
+                    }}>
+                      {si.label}
                     </div>
                   </div>
-                  <div style={{
-                    fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
-                    background: si.bg, color: si.color,
-                  }}>
-                    {si.label}
-                  </div>
-                </div>
-              </Card>
+                </Card>
+              </FadeIn>
             );
           })
         )}
@@ -298,13 +301,25 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
 
   // Render list view
   if (view === "list-all") {
-    return <InspeksiList title="Total Diperiksa" items={totalDiperiksa} onBack={() => setView("dashboard")} theme={theme} />;
+    return (
+      <FadeIn>
+        <InspeksiList title="Total Diperiksa" items={totalDiperiksa} onBack={() => setView("dashboard")} theme={theme} />
+      </FadeIn>
+    );
   }
   if (view === "list-perlu") {
-    return <InspeksiList title="Perlu Ditindaklanjuti" items={perluTindak} onBack={() => setView("dashboard")} theme={theme} />;
+    return (
+      <FadeIn>
+        <InspeksiList title="Perlu Ditindaklanjuti" items={perluTindak} onBack={() => setView("dashboard")} theme={theme} />
+      </FadeIn>
+    );
   }
   if (view === "list-selesai") {
-    return <InspeksiList title="Sudah Ditindaklanjuti" items={sudahTindak} onBack={() => setView("dashboard")} theme={theme} />;
+    return (
+      <FadeIn>
+        <InspeksiList title="Sudah Ditindaklanjuti" items={sudahTindak} onBack={() => setView("dashboard")} theme={theme} />
+      </FadeIn>
+    );
   }
 
   if (loading) {
@@ -353,27 +368,35 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
         {/* 3 Stat Card */}
         <SectionLabel>Ringkasan Kendaraan</SectionLabel>
         <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
-          <StatCard
-            value={totalDiperiksa.length}
-            label={"Total\nDiperiksa"}
-            bg={theme.primaryLight}
-            color={theme.primary}
-            onClick={() => setView("list-all")}
-          />
-          <StatCard
-            value={perluTindak.length}
-            label={"Perlu\nDitindaklanjuti"}
-            bg={theme.dangerLight}
-            color={theme.danger}
-            onClick={() => setView("list-perlu")}
-          />
-          <StatCard
-            value={sudahTindak.length}
-            label={"Sudah\nDitindaklanjuti"}
-            bg={theme.successLight}
-            color={theme.success}
-            onClick={() => setView("list-selesai")}
-          />
+          <FadeIn delay={0}>
+            <StatCard
+              value={totalDiperiksa.length}
+              label={"Total\nDiperiksa"}
+              bg={theme.primaryLight}
+              color={theme.primary}
+              onClick={() => setView("list-all")}
+            />
+          </FadeIn>
+
+          <FadeIn delay={60}> 
+            <StatCard
+              value={perluTindak.length}
+              label={"Perlu\nDitindaklanjuti"}
+              bg={theme.dangerLight}
+              color={theme.danger}
+              onClick={() => setView("list-perlu")}
+            />
+          </FadeIn>
+
+          <FadeIn delay={120}> 
+            <StatCard
+              value={sudahTindak.length}
+              label={"Sudah\nDitindaklanjuti"}
+              bg={theme.successLight}
+              color={theme.success}
+              onClick={() => setView("list-selesai")}
+            />
+          </FadeIn>
         </div>
 
         {/* Info singkat */}

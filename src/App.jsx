@@ -35,6 +35,7 @@ import P1Dashboard         from "./screens/P1Dashboard";
 import P1FormScreen        from "./screens/P1FormScreen";
 import P1TindakLanjut      from "./screens/P1TindakLanjut";
 import TeknisiTindakLanjut from "./screens/TeknisiTindakLanjut";
+import "./styles/animations.css";
 
 const AppInner = () => {
   const [screen, setScreen]                     = useState("login");
