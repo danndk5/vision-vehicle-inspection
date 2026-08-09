@@ -399,9 +399,9 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
   }, []);
 
   // Kategorisasi (Normal/Abnormal/Selesai — bukan lulus/tidak lulus)
-  const totalDiperiksa  = inspeksiFiltered;
-  const perluTindak     = inspeksiFiltered.filter((i) => hasAbnormal(i) && i.status !== "selesai");
-  const sudahTindak     = inspeksiFiltered.filter((i) => i.status === "selesai");
+  const totalDiperiksa  = inspeksiAll;
+  const perluTindak     = inspeksiAll.filter((i) => hasAbnormal(i) && i.status !== "selesai");
+  const sudahTindak     = inspeksiAll.filter((i) => i.status === "selesai");
 
   // Render list view
   if (view === "list-all") {
