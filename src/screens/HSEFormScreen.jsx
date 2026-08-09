@@ -6,7 +6,7 @@ import SectionLabel from "../components/SectionLabel";
 import theme from "../styles/theme";
 import { supabase } from "../lib/supabase";
 import { useCameraGPS } from "../hooks/useCameraGPS";
-import { useBackableView } from "../hooks/useBackableView";
+import { useBackableView, pushHistoryStep, discardHistorySteps } from "../hooks/useBackableView";
 import sop1 from "../assets/acuan/01.png";
 import sop2 from "../assets/acuan/02.png";
 import sop3 from "../assets/acuan/03.png";
@@ -36,8 +36,9 @@ const CHECKPOINTS = [
   { menit: 30, label: "5 Menit Keenam (30 Menit)" },
 ];
 
-// Urutan step form — dipakai untuk sinkronisasi dengan history browser
-// (lihat navigateToStep di dalam komponen HSEFormScreen).
+// Urutan step form — dipakai supaya tombol back HP mundur SATU langkah step
+// (bukan langsung keluar dari form), sama seperti FormScreen.jsx (Teknisi).
+// Lihat useEffect "step-history" di komponen HSEFormScreen di bawah.
 const STEP_ORDER = ["sop", "kendaraan", "kategori", "ujikedap", "ringkasan"];
 
 // ── Draft persistence (agar data tidak hilang kalau app ke-close / ke tombol home) ──
@@ -432,51 +433,6 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [submitting,  setSubmitting]  = useState(false);
 
-  // ── Navigasi step tersinkron dengan riwayat browser ─────────────────────
-  // Tujuan: tombol back FISIK HP mundur satu step form (bukan langsung
-  // tembus ke navigasi level atas / App.jsx). Pola: setiap perpindahan step
-  // MAJU melakukan pushState (nambah entry baru di riwayat), setiap
-  // perpindahan MUNDUR memakai history.go(delta negatif) supaya benar-benar
-  // membuang entry sejumlah step yang dilompati — termasuk saat "Mulai Baru"
-  // melompat balik banyak step sekaligus (bukan cuma ganti state doang, jadi
-  // tidak menyisakan entry riwayat "kosong").
-  const stepIndexRef = useRef(0);
-
-  const tagInitialHistory = (initialStep) => {
-    const idx = Math.max(0, STEP_ORDER.indexOf(initialStep));
-    stepIndexRef.current = idx;
-    try { window.history.replaceState({ hseStep: initialStep, stepIndex: idx }, ""); } catch {}
-  };
-
-  const navigateToStep = (targetStep) => {
-    const targetIndex = STEP_ORDER.indexOf(targetStep);
-    if (targetIndex === -1) { setStep(targetStep); return; }
-    const delta = targetIndex - stepIndexRef.current;
-
-    setStep(targetStep);
-    stepIndexRef.current = targetIndex;
-
-    if (delta > 0) {
-      try { window.history.pushState({ hseStep: targetStep, stepIndex: targetIndex }, ""); } catch {}
-    } else if (delta < 0) {
-      try { window.history.go(delta); } catch {}
-    }
-  };
-
-  useEffect(() => {
-    const handlePopState = (e) => {
-      const s = e.state?.hseStep;
-      if (s && STEP_ORDER.includes(s)) {
-        setStep(s);
-        stepIndexRef.current = STEP_ORDER.indexOf(s);
-      }
-      // Kalau state tidak punya hseStep, riwayat sudah keluar dari cakupan
-      // form ini — biarkan navigasi level atas (App.jsx) yang menangani.
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
   // GPS/kamera di-"hangat"-kan sejak layar formulir ini dibuka — supaya saat
   // user sampai di step foto (kedap MAUPUN temuan), izin & posisi GPS sudah
   // siap dan foto langsung terasa instan, bukan menunggu fix GPS baru tiap kali.
@@ -485,6 +441,27 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     warmUp();
     return () => coolDown();
   }, [warmUp, coolDown]);
+
+  // ── Step-history: tombol back HP mundur SATU langkah step form ────────────
+  // (sop -> kendaraan -> kategori -> ujikedap -> ringkasan), bukan langsung
+  // keluar dari form — sama seperti FormScreen.jsx (Teknisi). Setiap kali
+  // step MAJU, satu entri history didorong (pushHistoryStep); balik satu step
+  // dipanggil otomatis lewat closeFn saat tombol back HP / window.history.back()
+  // menutup entri itu. Kalau sudah di step paling awal ("sop"), back HP
+  // diteruskan ke navigasi level atas (App.jsx) — keluar dari form, seperti
+  // sebelumnya (onBack prop dari App.jsx sudah berupa window.history.back()).
+  const stepIndexRef = useRef(STEP_ORDER.indexOf(step));
+  useEffect(() => {
+    const idx = STEP_ORDER.indexOf(step);
+    const prevIdx = stepIndexRef.current;
+    if (idx > prevIdx) {
+      for (let i = prevIdx; i < idx; i++) {
+        const stepBeforeThis = STEP_ORDER[i];
+        pushHistoryStep(() => setStep(stepBeforeThis));
+      }
+    }
+    stepIndexRef.current = idx;
+  }, [step]);
 
   // Lookup nomor polisi — data WAJIB dari database admin Pertamina, tidak bisa input manual
   const [lookupStatus, setLookupStatus] = useState("idle"); // idle | loading | found | notfound
@@ -543,23 +520,15 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   const draftCreatedAtRef = useRef(null);
   const [draftExpiredNotice, setDraftExpiredNotice] = useState(false);
 
-  // Restore draft (kalau ada & belum lewat 6 jam) — sekaligus menandai entry
-  // riwayat browser saat ini dengan step awal (lewat replaceState, BUKAN
-  // pushState, supaya membuka form tidak menambah 1 back-stop ekstra).
-  // Catatan: kalau draft me-restore langsung ke step pertengahan (mis.
-  // "ujikedap"), tombol back HP dari situ akan langsung keluar form alih-alih
-  // mundur ke "kategori" dulu — riwayat browser yang sesungguhnya di sesi ini
-  // memang belum ada rekamnya, jadi ini batasan wajar, bukan bug.
   useEffect(() => {
     const draft = loadDraft();
-    let initialStep = "sop";
     if (draft) {
       const age = Date.now() - (draft.createdAt || 0);
       if (draft.createdAt && age > DRAFT_EXPIRE_MS) {
         clearDraft();
         setDraftExpiredNotice(true);
       } else {
-        initialStep = draft.step || "sop";
+        setStep(draft.step || "sop");
         setSopPage(draft.sopPage || 0);
         setKendaraan(draft.kendaraan || { polisi: "", kapasitas: "", kompartemen: "", transportir: "", masaBerlakuHeadTruck: "", masaBerlakuTangki: "", tanggalStnk: "" });
         setKategoriMT(draft.kategoriMT || "");
@@ -571,10 +540,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         setShowRestoreBanner(true);
       }
     }
-    setStep(initialStep);
-    tagInitialHistory(initialStep);
     setReady(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -587,9 +553,13 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   }, [ready, step, sopPage, kendaraan, kategoriMT, lookupStatus, checkpoints, fotoTemuan, riwayatSebelumnya]);
 
   const resetSemua = () => {
+    // Bereskan sisi history dulu SEBELUM ubah state — supaya entri yang
+    // sudah didorong pushHistoryStep (dari step-step yang dilewati) tidak
+    // nyangkut jadi "hantu" di riwayat browser. Lihat discardHistorySteps.
+    discardHistorySteps(stepIndexRef.current);
     clearDraft();
     draftCreatedAtRef.current = null;
-    navigateToStep("sop");
+    setStep("sop");
     setSopPage(0);
     setKendaraan({ polisi: "", kapasitas: "", kompartemen: "", transportir: "", masaBerlakuHeadTruck: "", masaBerlakuTangki: "", tanggalStnk: "" });
     setKategoriMT("");
@@ -705,9 +675,9 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   // ── Navigasi ──────────────────────────────────────────────────────────────
   const handleLanjutSOP = () => {
     if (sopPage < SOP_IMAGES.length - 1) { setSopPage((p) => p + 1); return; }
-    navigateToStep("kendaraan");
+    setStep("kendaraan");
   };
-  const handleSkipSOP = () => navigateToStep("kendaraan");
+  const handleSkipSOP = () => setStep("kendaraan");
 
   const handleLanjutKendaraan = () => {
     if (lookupStatus !== "found") {
@@ -718,14 +688,14 @@ const HSEFormScreen = ({ onBack, onNav }) => {
       alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Uji kedap tidak dapat dilanjutkan — hubungi admin untuk perpanjangan/registrasi ulang.");
       return;
     }
-    navigateToStep("kategori");
+    setStep("kategori");
   };
 
   const handleLanjutKategori = () => {
     if (!kategoriMT) { alert("Pilih kategori MT terlebih dahulu!"); return; }
     setCheckpoints(initCheckpoints());
     setFotoTemuan([]);
-    navigateToStep("ujikedap");
+    setStep("ujikedap");
   };
 
   // Validasi uji kedap — dipakai baik saat mau menuju ringkasan maupun submit akhir
@@ -750,7 +720,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     const e = validateUjiKedap();
     setErrors(e);
     if (Object.keys(e).length > 0) { alert("Lengkapi semua data uji kedap!"); return; }
-    navigateToStep("ringkasan");
+    setStep("ringkasan");
   };
 
   // Submit sesungguhnya — dipanggil dari layar Ringkasan setelah HSE mengecek ulang datanya.
@@ -763,7 +733,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   const handleSubmit = async () => {
     const e = validateUjiKedap();
     setErrors(e);
-    if (Object.keys(e).length > 0) { alert("Lengkapi semua data uji kedap!"); navigateToStep("ujikedap"); return; }
+    if (Object.keys(e).length > 0) { alert("Lengkapi semua data uji kedap!"); setStep("ujikedap"); return; }
 
     setSubmitting(true);
     let inspData = null;
@@ -885,7 +855,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-          <div onClick={() => navigateToStep("sop")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+          <div onClick={() => window.history.back()} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Data Kendaraan</div>
@@ -1003,7 +973,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-          <div onClick={() => navigateToStep("kendaraan")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+          <div onClick={() => window.history.back()} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Kategori MT</div>
@@ -1045,7 +1015,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-          <div onClick={() => navigateToStep("ujikedap")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+          <div onClick={() => window.history.back()} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali & Edit
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Ringkasan Sebelum Kirim</div>
@@ -1119,7 +1089,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         </div>
 
         <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, padding: "12px 16px", background: theme.surface, borderTop: `1px solid ${theme.border}`, display: "flex", gap: 10 }}>
-          <Btn onClick={() => navigateToStep("ujikedap")} variant="ghost" style={{ flex: 1 }} disabled={submitting}>
+          <Btn onClick={() => window.history.back()} variant="ghost" style={{ flex: 1 }} disabled={submitting}>
             ← Edit
           </Btn>
           <Btn onClick={handleSubmit} variant="primary" icon="check" style={{ flex: 2 }} disabled={submitting}>
@@ -1136,7 +1106,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   return (
     <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
       <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-        <div onClick={() => navigateToStep("kategori")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+        <div onClick={() => window.history.back()} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
           <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
         </div>
         <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Uji Kedap — 6 kPa</div>
