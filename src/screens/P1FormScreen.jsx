@@ -6,7 +6,7 @@ import SectionLabel from "../components/SectionLabel";
 import theme from "../styles/theme";
 import { supabase } from "../lib/supabase";
 import { useCameraGPS } from "../hooks/useCameraGPS";
-import { useBackableView } from "../hooks/useBackableView";
+import { useBackableView, pushHistoryStep, discardHistorySteps } from "../hooks/useBackableView";
 
 // ── Draft persistence (agar data tidak hilang kalau app ke-close / tombol home) ──
 const DRAFT_KEY = "draft_form_p1";
@@ -291,6 +291,42 @@ const P1FormScreen = ({ onBack, onNav }) => {
   const [submitting,  setSubmitting]  = useState(false);
   const [previewUrl,  setPreviewUrl]  = useState(null);
 
+  // ── Navigasi step tersinkron dengan riwayat browser, lewat pushHistoryStep
+  // dari hooks/useBackableView (stack yang sama dipakai PhotoLightbox) —
+  // pola identik dengan HSEFormScreen. Setiap MAJU satu step: pushHistoryStep
+  // + catat cara baliknya (closeFn). Setiap MUNDUR: window.history.back()
+  // (satu step) atau discardHistorySteps (lompat banyak step sekaligus,
+  // mis. tombol panah header / "Mulai Baru") — BUKAN ubah state langsung
+  // atau window.history.go(-n) mentah, supaya jalur tombol UI & tombol HP
+  // selalu konsisten dengan stack di internalViewFlag.js.
+  const stepDepthRef = useRef(0);
+
+  const goForward = (nextStep) => {
+    const prevStep = step;
+    pushHistoryStep(() => {
+      stepDepthRef.current = Math.max(0, stepDepthRef.current - 1);
+      setStep(prevStep);
+    });
+    stepDepthRef.current += 1;
+    setStep(nextStep);
+  };
+
+  // Lompat balik ke step 1 dari step manapun (tombol panah header, atau
+  // "Mulai Baru") — pakai discardHistorySteps dari useBackableView, BUKAN
+  // window.history.go(-n) mentah. Alasan: window.history.go(-n) cuma memicu
+  // SATU event popstate walau n>1, jadi kalau tidak lewat discardHistorySteps
+  // (yang membuang N entry stack tanpa memanggil closeFn-nya + menyinkronkan
+  // suppressCount), yang kepanggil cuma closeFn paling atas — step cuma
+  // mundur 1 level, bukan langsung ke step 1, dan sisa entry lama masih
+  // nyangkut di stack (bikin tombol back berikutnya "nyasar").
+  const jumpToStep1 = () => {
+    if (stepDepthRef.current > 0) {
+      discardHistorySteps(stepDepthRef.current);
+      stepDepthRef.current = 0;
+    }
+    setStep(1);
+  };
+
   // Kamera/GPS di-"hangat"-kan sejak layar ini dibuka — sama seperti HSEFormScreen
   const { warmUp, coolDown, requestAccess } = useCameraGPS();
   useEffect(() => {
@@ -333,6 +369,11 @@ const P1FormScreen = ({ onBack, onNav }) => {
   }, []);
 
   // ── Restore draft di awal (sekali) ─────────────────────────────────────
+  // Catatan: kalau draft me-restore langsung ke step pertengahan (mis. step
+  // 2/3), tombol back HP dari situ akan langsung keluar form alih-alih
+  // mundur satu step dulu — riwayat browser yang sesungguhnya di sesi baru
+  // ini memang belum ada rekamnya sejauh itu, jadi ini batasan wajar (sama
+  // seperti di HSEFormScreen), bukan bug.
   useEffect(() => {
     const draft = loadDraft();
     if (draft) {
@@ -367,7 +408,7 @@ const P1FormScreen = ({ onBack, onNav }) => {
   const resetSemua = () => {
     clearDraft();
     draftCreatedAtRef.current = null;
-    setStep(1);
+    jumpToStep1();
     setNopol("");
     setKendaraanData(null);
     setLookupStatus("idle");
@@ -478,7 +519,7 @@ const P1FormScreen = ({ onBack, onNav }) => {
       alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Pengecekan tidak dapat dilanjutkan — hubungi admin untuk perpanjangan/registrasi ulang.");
       return;
     }
-    setStep(2);
+    goForward(2);
   };
 
   const validateTemuan = () => {
@@ -498,7 +539,7 @@ const P1FormScreen = ({ onBack, onNav }) => {
   // Tombol di step Temuan sekarang menuju layar RINGKASAN dulu, belum langsung kirim
   const handleTinjau = () => {
     if (!validateTemuan()) return;
-    setStep(3);
+    goForward(3);
   };
 
   // Submit sesungguhnya — dipanggil dari layar Ringkasan.
@@ -508,7 +549,7 @@ const P1FormScreen = ({ onBack, onNav }) => {
   // tidak ada record "setengah jadi" yang nyangkut. submittedRef juga baru diset true setelah
   // SEMUA insert berhasil, supaya cleanup foto orphan (efek unmount) tetap jalan kalau gagal.
   const handleSubmit = async () => {
-    if (!validateTemuan()) { setStep(2); return; }
+    if (!validateTemuan()) { window.history.back(); return; }
     setSubmitting(true);
     let inspId = null;
     const createdTemuanIds = [];
@@ -576,7 +617,7 @@ const P1FormScreen = ({ onBack, onNav }) => {
     <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-        <div onClick={() => { if (step > 1) setStep(1); else onBack(); }} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+        <div onClick={() => { if (step > 1) jumpToStep1(); else onBack(); }} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
           <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
         </div>
         <div style={{ fontWeight: 800, fontSize: 18, color: theme.text, marginBottom: 16 }}>Pengecekan / Temuan</div>
@@ -742,7 +783,7 @@ const P1FormScreen = ({ onBack, onNav }) => {
       {/* Bottom Action */}
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, padding: "12px 16px", background: theme.surface, borderTop: `1px solid ${theme.border}`, display: "flex", gap: 10 }}>
         {step > 1 && (
-          <Btn onClick={() => setStep(s => s - 1)} variant="ghost" style={{ flex: 0.5, padding: "12px", fontSize: 13 }} disabled={submitting}>
+          <Btn onClick={() => window.history.back()} variant="ghost" style={{ flex: 0.5, padding: "12px", fontSize: 13 }} disabled={submitting}>
             ← Kembali
           </Btn>
         )}
