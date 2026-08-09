@@ -488,39 +488,37 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
   // temuan kendaraan ini selesai ditindaklanjuti — tidak ada lagi status
   // "sebagian selesai". Setiap insert/update dicek error-nya; kalau ada
   // yang gagal di tengah batch, semua perubahan yang SUDAH sempat terjadi
-  // (insert tindaklanjut_p1, update status temuan, update status inspeksi)
-  // dibatalkan lagi — supaya retry tidak menghasilkan data dobel atau
-  // status yang nyangkut salah.
+  // (insert tindaklanjut_p1, update status inspeksi) dibatalkan lagi —
+  // supaya retry tidak menghasilkan data dobel atau status yang nyangkut salah.
   const handleSave = async () => {
     setSaving(true);
 
-    const insertedTLIds = [];       // id baris tindaklanjut_p1 yang sempat ke-insert
-    const changedTemuanStatus = []; // { temuanId, prevStatus } yang sempat diubah
+    const insertedTLIds = []; // id baris tindaklanjut_p1 yang sempat ke-insert
     let prevInspStatus = null;
     let inspStatusChanged = false;
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       for (const [temuanId, t] of Object.entries(tl)) {
-        // Insert tindak lanjut
+        // Insert tindak lanjut. Catatan nama kolom: FK ke inspeksi_p1 bernama
+        // `inspeksi_p1_id` (bukan `inspeksi_id`) sesuai skema tabel aslinya.
         const { data: tlRow, error: tlErr } = await supabase.from("tindaklanjut_p1").insert([{
-          inspeksi_id: selected.id,
+          inspeksi_p1_id: selected.id,
           temuan_id: temuanId,
+          user_id: user?.id ?? null,
           catatan: t.catatan,
           foto_url: t.foto?.url || null,
           status: "selesai",
         }]).select().single();
         if (tlErr) throw tlErr;
         insertedTLIds.push(tlRow.id);
-
-        // Semua temuan yang sampai di sini sudah lengkap (tindakan + foto),
-        // jadi selalu ditandai selesai.
-        const prevStatus = temuanList.find((x) => x.id === temuanId)?.status ?? null;
-        const { error: updErr } = await supabase.from("inspeksi_p1_temuan").update({ status: "selesai" }).eq("id", temuanId);
-        if (updErr) throw updErr;
-        changedTemuanStatus.push({ temuanId, prevStatus });
       }
 
-      // Semua temuan pada kendaraan ini sudah selesai → tandai inspeksi selesai.
+      // Tabel inspeksi_p1_temuan tidak punya kolom status per-temuan — dan
+      // karena untuk sampai ke sini SEMUA temuan sudah wajib lengkap
+      // (tindakan + foto, divalidasi di handleTinjau), cukup tandai
+      // kendaraannya (inspeksi_p1) selesai secara keseluruhan.
       prevInspStatus = selected.status ?? null;
       const { error: inspErr } = await supabase.from("inspeksi_p1").update({ status: "selesai" }).eq("id", selected.id);
       if (inspErr) throw inspErr;
@@ -536,9 +534,6 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
       // Rollback manual — batalkan semua perubahan yang sempat terjadi di batch ini.
       if (inspStatusChanged) {
         await supabase.from("inspeksi_p1").update({ status: prevInspStatus }).eq("id", selected.id).catch(() => {});
-      }
-      for (const { temuanId, prevStatus } of changedTemuanStatus) {
-        await supabase.from("inspeksi_p1_temuan").update({ status: prevStatus }).eq("id", temuanId).catch(() => {});
       }
       if (insertedTLIds.length > 0) {
         await supabase.from("tindaklanjut_p1").delete().in("id", insertedTLIds).catch(() => {});
