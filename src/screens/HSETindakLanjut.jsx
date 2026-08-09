@@ -263,6 +263,15 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
   const [submitting,     setSubmitting]     = useState(false);
   const [ready,          setReady]          = useState(false);
 
+  // Level ke-2: begitu masuk step "ringkasan", pasang history-step TAMBAHAN
+  // di atas history-step milik `view === "detail"` (dipasang oleh
+  // HSETindakLanjut induknya). Tanpa ini, tombol kembali fisik HP di step
+  // ringkasan langsung pop history-step milik "detail" dan lompat ke list,
+  // skip step form sama sekali. Dengan nesting ini, back pertama menutup
+  // step ringkasan (kembali ke form), back kedua baru menutup detail
+  // (kembali ke list) — sama pola dengan nesting PhotoLightbox.
+  useBackableView(step === "ringkasan", () => setStep("form"));
+
   // GPS/kamera di-"hangat"-kan sejak layar tindak lanjut ini dibuka — supaya
   // foto bukti perbaikan ke-1, ke-2, dst terasa instan (posisi sudah di tangan).
   const { warmUp, coolDown, requestAccess } = useCameraGPS();
@@ -366,7 +375,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-          <div onClick={() => setStep("form")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+          <div onClick={() => goBack(() => setStep("form"))} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali & Edit
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Ringkasan Sebelum Kirim</div>
@@ -420,7 +429,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
         </div>
 
         <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, padding: "12px 16px", background: theme.surface, borderTop: `1px solid ${theme.border}`, display: "flex", gap: 10 }}>
-          <Btn onClick={() => setStep("form")} variant="ghost" style={{ flex: 1 }} disabled={submitting}>
+          <Btn onClick={() => goBack(() => setStep("form"))} variant="ghost" style={{ flex: 1 }} disabled={submitting}>
             ← Edit
           </Btn>
           <Btn onClick={handleSubmit} variant="primary" icon="check" style={{ flex: 2 }} disabled={submitting}>
