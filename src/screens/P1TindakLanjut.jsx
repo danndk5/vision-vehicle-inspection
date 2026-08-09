@@ -29,6 +29,15 @@ const clearDraft = () => {
   try { localStorage.removeItem(DRAFT_KEY); } catch {}
 };
 
+// Draft dianggap valid kalau masih ada isinya dan belum expired.
+const readValidDraft = () => {
+  const draft = loadDraft();
+  if (!draft) return null;
+  const age = Date.now() - (draft.createdAt || 0);
+  if (!draft.createdAt || age > DRAFT_EXPIRE_MS) { clearDraft(); return null; }
+  return draft;
+};
+
 // ── Overlay & upload helper (pola sama dengan HSEFormScreen / P1FormScreen) ──
 const decimalToDMS = (decimal, posDir, negDir) => {
   const dir = decimal >= 0 ? posDir : negDir;
@@ -288,16 +297,6 @@ const TindakLanjutItem = ({ idx, temuan, tl, onChange, onPreview, requestAccess 
         onPreview={onPreview}
         requestAccess={requestAccess}
       />
-
-      {/* Tandai selesai */}
-      <div onClick={() => set("selesai")(!tl.selesai)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginTop: 12, padding: "10px 12px", borderRadius: 10, background: tl.selesai ? theme.successLight : theme.surfaceAlt, border: `1.5px solid ${tl.selesai ? theme.success : theme.border}` }}>
-        <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${tl.selesai ? theme.success : theme.border}`, background: tl.selesai ? theme.success : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          {tl.selesai && <Icon name="check" size={13} color="#fff" />}
-        </div>
-        <span style={{ fontSize: 13, fontWeight: 700, color: tl.selesai ? theme.success : theme.textMuted }}>
-          {tl.selesai ? "✓ Ditandai selesai" : "Tandai selesai"}
-        </span>
-      </div>
     </div>
   );
 };
@@ -306,16 +305,7 @@ const TindakLanjutItem = ({ idx, temuan, tl, onChange, onPreview, requestAccess 
 //    di layar Ringkasan Sebelum Kirim ──────────────────────────────────────────
 const RingkasanItem = ({ idx, temuan, tl, onPreview }) => (
   <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Temuan #{idx + 1}</div>
-      <div style={{
-        fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
-        background: tl.selesai ? theme.successLight : theme.surfaceAlt,
-        color: tl.selesai ? theme.success : theme.textMuted,
-      }}>
-        {tl.selesai ? "✓ Selesai" : "Dikerjakan"}
-      </div>
-    </div>
+    <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 10 }}>Temuan #{idx + 1}</div>
     <div style={{ fontWeight: 700, fontSize: 13, color: theme.text, marginBottom: 4 }}>{temuan.judul}</div>
 
     <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
@@ -361,6 +351,14 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
   // bukan langsung lompat ke Beranda/keluar aplikasi.
   useBackableView(!!selected, () => setSelected(null));
 
+  // Level ke-2: saat sudah masuk step "ringkasan", pasang history-step
+  // TAMBAHAN di atas yang dari `selected`. Tanpa ini, tombol kembali fisik
+  // di step ringkasan langsung pop entry milik `selected` dan lompat 2 layar
+  // sekaligus (ringkasan → list, melewati form). Dengan nesting ini, back
+  // pertama hanya menutup step ringkasan (kembali ke form), back kedua baru
+  // menutup detail (kembali ke list) — sama seperti nesting PhotoLightbox.
+  useBackableView(!!selected && step === "ringkasan", () => setStep("form"));
+
   // GPS/kamera di-"hangat"-kan sejak layar ini dibuka — sama seperti
   // HSEFormScreen / P1FormScreen, supaya foto tindak lanjut langsung instan.
   const { warmUp, coolDown, requestAccess } = useCameraGPS();
@@ -395,20 +393,24 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
 
   useEffect(() => { loadData(); }, []);
 
+  // Cek draft tersimpan setiap kali kita berada di layar LIST (selected null).
+  // Sebelumnya efek ini hanya jalan sekali setelah loadData awal, jadi kalau
+  // user masuk detail lalu tekan "Kembali", draft sudah tersimpan di
+  // localStorage tapi banner "Lanjutkan" tidak muncul lagi karena efek ini
+  // tidak pernah dihitung ulang. Sekarang dependency `selected` ditambahkan
+  // supaya setiap kembali ke list, status draft dicek ulang.
   useEffect(() => {
-    if (loading) return;
-    const draft = loadDraft();
-    if (!draft) return;
-    const age = Date.now() - (draft.createdAt || 0);
-    if (!draft.createdAt || age > DRAFT_EXPIRE_MS) { clearDraft(); return; }
+    if (loading || selected) return;
+    const draft = readValidDraft();
+    if (!draft) { setRestoreCandidate(null); return; }
     const insp = inspeksiList.find((i) => i.id === draft.inspId);
     if (insp) {
       setRestoreCandidate({ insp, tl: draft.tl || {}, createdAt: draft.createdAt });
     } else {
       clearDraft();
+      setRestoreCandidate(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, inspeksiList]);
+  }, [loading, inspeksiList, selected]);
 
   // Auto-save progres tindak lanjut selama layar detail terbuka
   useEffect(() => {
@@ -433,6 +435,20 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
 
   const openDetail = (insp, restoredTl, restoredCreatedAt) => {
     submittedRef.current = false;
+
+    // Kalau dipanggil tanpa draft eksplisit (mis. user langsung tap kartu
+    // kendaraan yang sama lagi setelah sempat menekan tombol kembali), cek
+    // dulu apakah masih ada draft yang cocok untuk kendaraan ini di
+    // localStorage. Sebelumnya di sini langsung mulai dari form kosong,
+    // itulah sebabnya data yang sudah diisi terasa "hilang".
+    if (!restoredTl) {
+      const draft = readValidDraft();
+      if (draft && draft.inspId === insp.id) {
+        restoredTl = draft.tl || {};
+        restoredCreatedAt = draft.createdAt;
+      }
+    }
+
     draftCreatedAtRef.current = restoredTl ? (restoredCreatedAt || Date.now()) : null;
     setRestoreCandidate(null);
     setSelected(insp);
@@ -442,8 +458,8 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
     const init = {};
     list.forEach(t => {
       init[t.id] = restoredTl?.[t.id]
-        ? { catatan: "", foto: null, selesai: false, errorCatatan: false, errorFoto: false, ...restoredTl[t.id] }
-        : { catatan: "", foto: null, selesai: false, errorCatatan: false, errorFoto: false };
+        ? { catatan: "", foto: null, errorCatatan: false, errorFoto: false, ...restoredTl[t.id] }
+        : { catatan: "", foto: null, errorCatatan: false, errorFoto: false };
     });
     setTL(init);
   };
@@ -466,14 +482,15 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
     setStep("ringkasan");
   };
 
-  // Simpan sesungguhnya — dipanggil dari layar Ringkasan. Sebelumnya SETIAP
-  // insert/update di loop ini tidak dicek error-nya sama sekali, jadi kalau
-  // salah satu gagal (mis. koneksi putus), kode tetap lanjut menganggap
-  // sukses tanpa memberi tahu user. Sekarang tiap langkah dicek, dan kalau
-  // ada yang gagal di tengah batch, semua perubahan yang SUDAH sempat
-  // terjadi pada batch ini (insert tindaklanjut_p1, update status temuan,
-  // update status inspeksi) dibatalkan lagi — supaya retry tidak
-  // menghasilkan data dobel atau status yang nyangkut salah.
+  // Simpan sesungguhnya — dipanggil dari layar Ringkasan. Karena untuk
+  // masuk ke layar ini SEMUA temuan wajib sudah punya tindakan + foto
+  // (divalidasi di handleTinjau), submit di sini selalu berarti seluruh
+  // temuan kendaraan ini selesai ditindaklanjuti — tidak ada lagi status
+  // "sebagian selesai". Setiap insert/update dicek error-nya; kalau ada
+  // yang gagal di tengah batch, semua perubahan yang SUDAH sempat terjadi
+  // (insert tindaklanjut_p1, update status temuan, update status inspeksi)
+  // dibatalkan lagi — supaya retry tidak menghasilkan data dobel atau
+  // status yang nyangkut salah.
   const handleSave = async () => {
     setSaving(true);
 
@@ -490,30 +507,24 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
           temuan_id: temuanId,
           catatan: t.catatan,
           foto_url: t.foto?.url || null,
-          status: t.selesai ? "selesai" : "dikerjakan",
+          status: "selesai",
         }]).select().single();
         if (tlErr) throw tlErr;
         insertedTLIds.push(tlRow.id);
 
-        // Update status temuan kalau ditandai selesai
-        if (t.selesai) {
-          const prevStatus = temuanList.find((x) => x.id === temuanId)?.status ?? null;
-          const { error: updErr } = await supabase.from("inspeksi_p1_temuan").update({ status: "selesai" }).eq("id", temuanId);
-          if (updErr) throw updErr;
-          changedTemuanStatus.push({ temuanId, prevStatus });
-        }
+        // Semua temuan yang sampai di sini sudah lengkap (tindakan + foto),
+        // jadi selalu ditandai selesai.
+        const prevStatus = temuanList.find((x) => x.id === temuanId)?.status ?? null;
+        const { error: updErr } = await supabase.from("inspeksi_p1_temuan").update({ status: "selesai" }).eq("id", temuanId);
+        if (updErr) throw updErr;
+        changedTemuanStatus.push({ temuanId, prevStatus });
       }
 
-      // Cek apakah semua temuan selesai → update inspeksi
-      const { data: allTemuan, error: allErr } = await supabase
-        .from("inspeksi_p1_temuan").select("status").eq("inspeksi_id", selected.id);
-      if (allErr) throw allErr;
-      if (allTemuan?.every(t => t.status === "selesai")) {
-        prevInspStatus = selected.status ?? null;
-        const { error: inspErr } = await supabase.from("inspeksi_p1").update({ status: "selesai" }).eq("id", selected.id);
-        if (inspErr) throw inspErr;
-        inspStatusChanged = true;
-      }
+      // Semua temuan pada kendaraan ini sudah selesai → tandai inspeksi selesai.
+      prevInspStatus = selected.status ?? null;
+      const { error: inspErr } = await supabase.from("inspeksi_p1").update({ status: "selesai" }).eq("id", selected.id);
+      if (inspErr) throw inspErr;
+      inspStatusChanged = true;
 
       clearDraft();
       draftCreatedAtRef.current = null;
@@ -562,13 +573,12 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
     </div>
   );
 
-  // ── Detail tindak lanjut ──────────────────────────────────────────────────
+  // ── Ringkasan sebelum kirim ───────────────────────────────────────────────
   if (selected && step === "ringkasan") {
-    const semuaSelesai = Object.values(tl).every((t) => t.selesai);
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
-          <div onClick={() => setStep("form")} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
+          <div onClick={() => goBack(() => setStep("form"))} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali & Edit
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Ringkasan Sebelum Kirim</div>
@@ -580,13 +590,9 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", paddingBottom: 100 }}>
           <div style={{
             marginBottom: 16, padding: "14px 16px", borderRadius: 14, textAlign: "center",
-            background: semuaSelesai ? "#D1FAE5" : "#FEF3C7",
-            color: semuaSelesai ? theme.success : "#92400E",
-            fontWeight: 800, fontSize: 15,
+            background: "#D1FAE5", color: theme.success, fontWeight: 800, fontSize: 15,
           }}>
-            {semuaSelesai
-              ? `✅ SEMUA TEMUAN DITANDAI SELESAI (${temuanList.length}/${temuanList.length})`
-              : `🔧 SEBAGIAN TEMUAN MASIH DIKERJAKAN`}
+            ✅ SEMUA TEMUAN SUDAH DIPERBAIKI ({temuanList.length}/{temuanList.length})
           </div>
 
           <SectionLabel>Detail Tindak Lanjut</SectionLabel>
@@ -600,7 +606,7 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
         </div>
 
         <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, padding: "12px 16px", background: theme.surface, borderTop: `1px solid ${theme.border}`, display: "flex", gap: 10 }}>
-          <Btn onClick={() => setStep("form")} variant="ghost" style={{ flex: 1 }} disabled={saving}>
+          <Btn onClick={() => goBack(() => setStep("form"))} variant="ghost" style={{ flex: 1 }} disabled={saving}>
             ← Edit
           </Btn>
           <Btn onClick={handleSave} variant="primary" icon="check" style={{ flex: 2 }} disabled={saving}>
@@ -632,7 +638,7 @@ const P1TindakLanjut = ({ onBack, onNav }) => {
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", paddingBottom: 90 }}>
           <SectionLabel>Temuan yang Perlu Ditindaklanjuti</SectionLabel>
           <div style={{ fontSize: 13, color: theme.textMuted, marginBottom: 16 }}>
-            Isi tindakan dan foto dokumentasi untuk setiap temuan (keduanya wajib). Centang <b>selesai</b> jika sudah tuntas ditangani.
+            Isi tindakan dan foto dokumentasi untuk setiap temuan (keduanya wajib).
           </div>
           {temuanList.map((t, i) => (
             <TindakLanjutItem
