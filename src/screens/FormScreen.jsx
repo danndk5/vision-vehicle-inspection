@@ -7,7 +7,7 @@ import ToggleStatus from "../components/ToggleStatus";
 import theme from "../styles/theme";
 import { supabase } from "../lib/supabase";
 import { useCameraGPS } from "../hooks/useCameraGPS";
-import { useBackableView, goBack } from "../hooks/useBackableView";
+import { useBackableView, goBack, pushHistoryStep, discardHistorySteps } from "../hooks/useBackableView";
 
 // ── Draft persistence (agar data tidak hilang kalau app ke-close / tombol home) ──
 const DRAFT_KEY = "draft_form_teknisi";
@@ -29,7 +29,9 @@ const clearDraft = () => {
 const initCctv = () => ({ status: "", segel_bricket: "", segel_kabel: "", ket_bricket: "", ket_kabel: "" });
 const initGps  = () => ({ status: "", segel: { status: "", ket: "" }, kabel: { status: "", ket: "" } });
 
-// Urutan step untuk perbandingan index di history/back navigation.
+// Urutan step untuk perbandingan index — dipakai untuk membangun ulang
+// kedalaman history saat draft dipulihkan langsung ke step tengah, dan untuk
+// menghitung berapa banyak history-step yang perlu dibuang saat "Mulai Baru".
 // "ringkasan" adalah step tambahan setelah step 3 (CCTV) — bukan bagian
 // dari stepper bernomor 1/2/3 di header, sama seperti pola HSEFormScreen.
 const STEP_ORDER = [1, 2, 3, "ringkasan"];
@@ -186,36 +188,22 @@ const ToggleAktif = ({ value, onChange }) => (
   </div>
 );
 
-// ── PhotoLightbox — preview full-screen. Tombol back HP menutup lightbox ini
-// dulu (bukan langsung keluar dari form) — sama seperti pola HSEFormScreen. ──
+// ── PhotoLightbox — preview full-screen. Tidak ada tombol ❌ dan tidak ada
+// "ketuk di mana saja untuk menutup" — murni jalur HP: hanya tombol kembali
+// bawaan HP (via useBackableView) yang bisa menutup lightbox ini. ──────────
 const PhotoLightbox = ({ url, onClose }) => {
   useBackableView(!!url, onClose);
   if (!url) return null;
   return (
     <div
-      onClick={() => goBack(onClose)}
       style={{
         position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999,
         display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
       }}
     >
-      <div
-        onClick={() => goBack(onClose)}
-        style={{
-          position: "absolute", top: 44, right: 20, color: "#fff", fontSize: 26,
-          fontWeight: 700, cursor: "pointer", width: 36, height: 36, borderRadius: 18,
-          background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        ✕
-      </div>
-      <div style={{ position: "absolute", top: 46, left: 20, color: "#fff", fontSize: 12, opacity: 0.8 }}>
-        Ketuk di mana saja untuk menutup
-      </div>
       <img
         src={url}
         alt="Preview foto"
-        onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 10, objectFit: "contain" }}
       />
     </div>
@@ -395,22 +383,6 @@ const FormScreen = ({ onBack, onNav }) => {
   const photosRef = useRef(photos);
   useEffect(() => { photosRef.current = photos; }, [photos]);
 
-  useEffect(() => {
-    if (step === 1) window.history.replaceState({ screen: "form", step: 1 }, "");
-    else window.history.pushState({ screen: "form", step }, "");
-  }, [step]);
-
-  useEffect(() => {
-    const handlePopState = (e) => {
-      const state = e.state;
-      if (state?.screen === "form" && state?.step !== undefined && stepIndex(state.step) < stepIndex(step)) {
-        setStep(state.step);
-      }
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [step]);
-
   // Cleanup: layar ditinggalkan tanpa submit → foto yang sudah keburu
   // diupload dihapus lagi dari storage. Draft TIDAK dihapus di sini (sama
   // seperti HSEFormScreen) — biar tetap bisa dipulihkan kalau user balik lagi.
@@ -441,7 +413,8 @@ const FormScreen = ({ onBack, onNav }) => {
         clearDraft();
         setDraftExpiredNotice(true);
       } else {
-        setStep(draft.step || 1);
+        const restoredStep = draft.step || 1;
+        setStep(restoredStep);
         setPolisi(draft.polisi || "");
         setKendaraanData(draft.kendaraanData || null);
         setLookupStatus(draft.kendaraanData ? "found" : "idle");
@@ -452,6 +425,15 @@ const FormScreen = ({ onBack, onNav }) => {
         setRiwayatSebelumnya(draft.riwayatSebelumnya || []);
         draftCreatedAtRef.current = draft.createdAt || Date.now();
         setShowRestoreBanner(true);
+
+        // Bangun ulang kedalaman history sesuai step yang dipulihkan, supaya
+        // tombol kembali HP berperilaku SAMA seperti alur normal klik "Lanjut"
+        // satu-satu (step demi step) — bukan cuma 1x back langsung tembus
+        // keluar aplikasi melewati step & beranda.
+        const restoredIdx = stepIndex(restoredStep);
+        for (let i = 0; i < restoredIdx; i++) {
+          pushHistoryStep(() => setStep(STEP_ORDER[i]));
+        }
       }
     }
     setReady(true);
@@ -469,7 +451,35 @@ const FormScreen = ({ onBack, onNav }) => {
     saveDraft({ createdAt: draftCreatedAtRef.current, step, polisi, kendaraanData, gps, cctv, segelKotakSekring, photos, riwayatSebelumnya });
   }, [ready, step, polisi, kendaraanData, gps, cctv, segelKotakSekring, photos, riwayatSebelumnya]);
 
+  // ── Jaring pengaman tambahan: paksa flush draft segera saat app
+  // di-background/ditutup (tombol Home, pindah app, tutup tab) — tidak
+  // sepenuhnya bergantung pada timing effect React di atas, karena OS bisa
+  // mem-suspend JS mendadak sebelum effect sempat jalan. ─────────────────
+  useEffect(() => {
+    const flushDraft = () => {
+      if (!ready || !document.hidden) return;
+      const hasProgress = step !== 1 || polisi.trim() || photosRef.current.length > 0;
+      if (!hasProgress) return;
+      if (!draftCreatedAtRef.current) draftCreatedAtRef.current = Date.now();
+      saveDraft({
+        createdAt: draftCreatedAtRef.current, step, polisi, kendaraanData,
+        gps, cctv, segelKotakSekring, photos: photosRef.current, riwayatSebelumnya,
+      });
+    };
+    document.addEventListener("visibilitychange", flushDraft);
+    window.addEventListener("pagehide", flushDraft);
+    return () => {
+      document.removeEventListener("visibilitychange", flushDraft);
+      window.removeEventListener("pagehide", flushDraft);
+    };
+  }, [ready, step, polisi, kendaraanData, gps, cctv, segelKotakSekring, riwayatSebelumnya]);
+
   const resetSemua = () => {
+    // Buang juga history-step yang sudah menumpuk (kalau user pencet "Mulai
+    // Baru" saat sedang di step 2/3/ringkasan), supaya tombol back HP
+    // berikutnya tidak nyasar ke langkah lama yang sudah tidak relevan.
+    const n = stepIndex(step);
+    if (n > 0) discardHistorySteps(n);
     clearDraft();
     draftCreatedAtRef.current = null;
     setStep(1);
@@ -634,12 +644,16 @@ const FormScreen = ({ onBack, onNav }) => {
       alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Pengecekan tidak dapat dilanjutkan — hubungi admin untuk perpanjangan/registrasi ulang.");
       return;
     }
+    // Push satu langkah history: kalau tombol kembali HP ditekan di step 2,
+    // ini yang akan mengembalikan tampilan ke step 1.
+    pushHistoryStep(() => setStep(1));
     setStep(2);
   };
 
   // Tombol di step 3 sekarang menuju layar RINGKASAN dulu, belum langsung kirim
   const handleTinjau = () => {
     if (!validateStep3()) { alert("Lengkapi semua data CCTV dan foto dokumentasi!"); return; }
+    pushHistoryStep(() => setStep(3));
     setStep("ringkasan");
   };
 
@@ -651,7 +665,13 @@ const FormScreen = ({ onBack, onNav }) => {
   // berhasil, supaya cleanup foto orphan (efek unmount) tetap jalan kalau
   // submit gagal dan user keluar dari layar ini.
   const handleSubmit = async () => {
-    if (!validateStep3()) { alert("Lengkapi semua data CCTV dan foto dokumentasi!"); setStep(3); return; }
+    if (!validateStep3()) {
+      alert("Lengkapi semua data CCTV dan foto dokumentasi!");
+      // Mundur lewat history (bukan langsung setStep) supaya jalur back tetap
+      // konsisten dengan tombol "← Edit"/tombol kembali HP dari Ringkasan.
+      window.history.back();
+      return;
+    }
     setSubmitting(true);
     let inspData = null;
     try {
@@ -948,7 +968,7 @@ const FormScreen = ({ onBack, onNav }) => {
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, padding: "12px 16px", background: theme.surface, borderTop: `1px solid ${theme.border}`, display: "flex", gap: 10 }}>
         {stepNum > 1 && <Btn onClick={() => window.history.back()} variant="ghost" style={{ flex: 0.5, padding: "12px", fontSize: 13 }} disabled={submitting}>← Kembali</Btn>}
         {step === 1 && <Btn onClick={handleNextStep1} variant="primary" disabled={submitting || lookupStatus === "loading" || isKendaraanExpired}>Lanjut →</Btn>}
-        {step === 2 && <Btn onClick={() => { if (!validateStep2()) { alert("Lengkapi semua data GPS dan foto dokumentasi!"); return; } setStep(3); }} variant="primary" disabled={submitting}>Lanjut →</Btn>}
+        {step === 2 && <Btn onClick={() => { if (!validateStep2()) { alert("Lengkapi semua data GPS dan foto dokumentasi!"); return; } pushHistoryStep(() => setStep(2)); setStep(3); }} variant="primary" disabled={submitting}>Lanjut →</Btn>}
         {step === 3 && <Btn onClick={handleTinjau} variant="primary" icon="check" disabled={submitting}>Tinjau & Kirim →</Btn>}
       </div>
 
