@@ -337,14 +337,6 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
   const [inspeksiAll, setInspeksiAll] = useState([]);
   const [loading,     setLoading]     = useState(true);
 
-  // Filter periode — mempengaruhi angka & daftar di beranda (sama seperti HSEDashboard)
-  const [filterMode,  setFilterMode]  = useState("semua");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd,   setCustomEnd]   = useState("");
-
-  // Cari nomor polisi cepat
-  const [searchQuery, setSearchQuery] = useState("");
-
   // Peringatan masa berlaku Head Truck / Tangki
   const [expiryItems,     setExpiryItems]     = useState([]);
   const [showExpiryModal, setShowExpiryModal] = useState(false);
@@ -406,33 +398,6 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
     loadData();
   }, []);
 
-  // Terapkan filter periode + pencarian ke seluruh data (sama seperti HSEDashboard)
-  const inspeksiFiltered = useMemo(() => {
-    let result = inspeksiAll;
-
-    if (filterMode === "custom") {
-      if (customStart || customEnd) {
-        const start = customStart ? new Date(customStart + "T00:00:00") : null;
-        const end   = customEnd   ? new Date(customEnd   + "T23:59:59") : null;
-        result = result.filter((i) => {
-          const t = new Date(i.created_at);
-          if (start && t < start) return false;
-          if (end && t > end) return false;
-          return true;
-        });
-      }
-    } else if (filterMode !== "semua") {
-      const start = getRangeStart(filterMode);
-      result = result.filter((i) => new Date(i.created_at) >= start);
-    }
-
-    if (searchQuery.trim()) {
-      result = result.filter((i) => i.nomor_polisi?.toUpperCase().includes(searchQuery.trim()));
-    }
-
-    return result;
-  }, [inspeksiAll, filterMode, customStart, customEnd, searchQuery]);
-
   // Kategorisasi (Normal/Abnormal/Selesai — bukan lulus/tidak lulus)
   const totalDiperiksa  = inspeksiFiltered;
   const perluTindak     = inspeksiFiltered.filter((i) => hasAbnormal(i) && i.status !== "selesai");
@@ -491,20 +456,6 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
       <div style={{ padding: "24px 16px" }}>
         {/* Peringatan masa berlaku */}
         <ExpiryBanner theme={theme} items={expiryItems} onClick={() => setShowExpiryModal(true)} />
-
-        {/* Cari nomor polisi */}
-        <SearchBar theme={theme} value={searchQuery} onChange={setSearchQuery} />
-
-        <SectionLabel>Filter Periode</SectionLabel>
-        <FilterBar
-          theme={theme}
-          filterMode={filterMode}
-          setFilterMode={setFilterMode}
-          customStart={customStart}
-          setCustomStart={setCustomStart}
-          customEnd={customEnd}
-          setCustomEnd={setCustomEnd}
-        />
 
         {/* 3 Stat Card */}
         <SectionLabel>Ringkasan Kendaraan</SectionLabel>

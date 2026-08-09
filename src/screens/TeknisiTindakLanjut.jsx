@@ -164,8 +164,9 @@ const FIELD_TO_KATEGORI = {
 };
 
 // Ambil semua field yang abnormal/tidak aktif dari satu inspeksi. `fotoMap`
-// (kategori → url, hasil query foto_inspeksi) opsional — dipakai untuk
-// melampirkan foto dokumentasi temuan ke tiap item saat di layar Detail.
+// (kategori → [urls], hasil query foto_inspeksi) opsional — dipakai untuk
+// melampirkan SEMUA foto dokumentasi temuan (bisa lebih dari 1 sudut/angle)
+// ke tiap item saat di layar Detail.
 const getAbnormalItems = (insp, fotoMap = {}) => {
   const items = [];
   const statusFields = [
@@ -181,13 +182,13 @@ const getAbnormalItems = (insp, fotoMap = {}) => {
 
   statusFields.forEach((f) => {
     if (insp[f] === "Tidak Aktif") {
-      items.push({ field: f, label: FIELD_LABELS[f], nilai: insp[f], ket: null, fotoTemuan: fotoMap[FIELD_TO_KATEGORI[f]] || null });
+      items.push({ field: f, label: FIELD_LABELS[f], nilai: insp[f], ket: null, fotoTemuanList: fotoMap[FIELD_TO_KATEGORI[f]] || [] });
     }
   });
   normalAbnormalFields.forEach((f) => {
     if (insp[f]?.toLowerCase() === "abnormal") {
       const ketField = KET_FIELDS[f];
-      items.push({ field: f, label: FIELD_LABELS[f], nilai: insp[f], ket: ketField ? insp[ketField] : null, fotoTemuan: fotoMap[FIELD_TO_KATEGORI[f]] || null });
+      items.push({ field: f, label: FIELD_LABELS[f], nilai: insp[f], ket: ketField ? insp[ketField] : null, fotoTemuanList: fotoMap[FIELD_TO_KATEGORI[f]] || [] });
     }
   });
   return items;
@@ -215,10 +216,12 @@ const PhotoLightbox = ({ url, onClose }) => {
   );
 };
 
-// ── RepairPhotoCapture — foto bukti perbaikan (bisa lebih dari 1 per item).
-// Dilengkapi thumbnail + tap-untuk-preview (fix bug #2), dan upload lewat
-// uploadFoto() yang sudah resize maks 1600px + fix EXIF + overlay GPS/waktu
-// (fix bug #3), bukan upload file mentah seperti sebelumnya. ────────────────
+// ── RepairPhotoCapture — foto bukti perbaikan, JUMLAH BEBAS/TIDAK DIBATASI
+// per item (beberapa angle boleh). Dilengkapi thumbnail + tap-untuk-preview
+// (fix bug #2), dan upload lewat uploadFoto() yang sudah resize maks 1600px
+// + fix EXIF + overlay GPS/waktu (fix bug #3), bukan upload file mentah
+// seperti sebelumnya. Label tombol berubah jadi "Tambah Foto Lagi" begitu
+// sudah ada minimal 1 foto, supaya jelas bisa terus ditambah. ───────────────
 const RepairPhotoCapture = ({ kategori, photos, onPhotos, onPreview, errorFoto, requestAccess }) => {
   const [capState, setCapState] = useState("idle");
   const [permErr,  setPermErr]  = useState(null);
@@ -273,7 +276,7 @@ const RepairPhotoCapture = ({ kategori, photos, onPhotos, onPreview, errorFoto, 
       <Btn onClick={handleCaptureClick} variant="outline"
         style={{ fontSize: 12, padding: "7px 12px", width: "100%" }}
         disabled={isWorking}>
-        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Foto Bukti Perbaikan"}
+        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : photos.length > 0 ? "📷 Tambah Foto Lagi" : "📷 Foto Bukti Perbaikan"}
       </Btn>
       {photos.length > 0 && (
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -475,7 +478,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuanMap, onBack, onSelesai }) => {
           </div>
 
           <SectionLabel>Detail Perbaikan</SectionLabel>
-          {abnormalItems.map(({ field, label, nilai, ket, fotoTemuan }) => (
+          {abnormalItems.map(({ field, label, nilai, ket, fotoTemuanList }) => (
             <div key={field} style={{
               marginBottom: 14, padding: 12, borderRadius: 12,
               background: theme.surface, border: `1px solid ${theme.border}`,
@@ -490,11 +493,15 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuanMap, onBack, onSelesai }) => {
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 10, color: theme.danger, marginBottom: 4, fontWeight: 700 }}>SEBELUM (Temuan)</div>
-                  {fotoTemuan ? (
-                    <img
-                      src={fotoTemuan} alt="temuan" onClick={() => setPreviewUrl(fotoTemuan)}
-                      style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
-                    />
+                  {fotoTemuanList.length > 0 ? (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {fotoTemuanList.map((url) => (
+                        <img
+                          key={url} src={url} alt="temuan" onClick={() => setPreviewUrl(url)}
+                          style={{ width: 42, height: 42, objectFit: "cover", borderRadius: 6, cursor: "pointer" }}
+                        />
+                      ))}
+                    </div>
                   ) : (
                     <div style={{ width: "100%", height: 90, borderRadius: 8, background: theme.surfaceAlt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: theme.textMuted }}>
                       Tidak ada foto
@@ -573,7 +580,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuanMap, onBack, onSelesai }) => {
             <div style={{ fontSize: 13, color: theme.textMuted }}>Semua item normal ✅</div>
           </Card>
         ) : (
-          abnormalItems.map(({ field, label, nilai, ket, fotoTemuan }) => (
+          abnormalItems.map(({ field, label, nilai, ket, fotoTemuanList }) => (
             <div key={field} style={{
               marginBottom: 16, padding: 14, borderRadius: 14,
               background: theme.surface, border: `1.5px solid ${theme.danger}`,
@@ -586,15 +593,20 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuanMap, onBack, onSelesai }) => {
                 </div>
               </div>
 
-              {/* Foto dokumentasi temuan dari FormScreen — sebelumnya tidak pernah
-                  ditarik sama sekali dari tabel foto_inspeksi. */}
-              {fotoTemuan ? (
-                <img
-                  src={fotoTemuan}
-                  alt="Foto temuan"
-                  onClick={() => setPreviewUrl(fotoTemuan)}
-                  style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 8, marginBottom: 8, cursor: "pointer" }}
-                />
+              {/* Foto dokumentasi temuan dari FormScreen — bisa lebih dari 1
+                  angle per item, ditarik dari tabel foto_inspeksi. */}
+              {fotoTemuanList.length > 0 ? (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  {fotoTemuanList.map((url) => (
+                    <img
+                      key={url}
+                      src={url}
+                      alt="Foto temuan"
+                      onClick={() => setPreviewUrl(url)}
+                      style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
+                    />
+                  ))}
+                </div>
               ) : (
                 <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 8, fontStyle: "italic" }}>
                   (Tidak ada foto dokumentasi untuk item ini)
@@ -631,7 +643,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuanMap, onBack, onSelesai }) => {
                 </div>
               )}
 
-              {/* Foto bukti perbaikan */}
+              {/* Foto bukti perbaikan — jumlah bebas per item */}
               <RepairPhotoCapture
                 kategori={`tl_${field}`}
                 photos={photosMap[field] || []}
@@ -731,8 +743,10 @@ const TeknisiTindakLanjut = ({ onBack, onNav }) => {
     loadData();
   }, []);
 
-  // Sebelum masuk ke Detail, tarik dulu foto dokumentasi temuan dari
+  // Sebelum masuk ke Detail, tarik dulu SEMUA foto dokumentasi temuan dari
   // foto_inspeksi (fix bug #1) — kategori-nya dipetakan lewat FIELD_TO_KATEGORI.
+  // Satu kategori bisa punya lebih dari 1 foto (beberapa angle), makanya
+  // dikumpulkan jadi array per kategori, bukan ditimpa jadi 1 URL saja.
   const handlePilih = async (insp) => {
     const kategoriList = Object.values(FIELD_TO_KATEGORI);
     const { data: fotoData } = await supabase
@@ -742,7 +756,10 @@ const TeknisiTindakLanjut = ({ onBack, onNav }) => {
       .in("kategori", kategoriList);
 
     const fotoMap = {};
-    (fotoData || []).forEach((f) => { fotoMap[f.kategori] = f.url; });
+    (fotoData || []).forEach((f) => {
+      if (!fotoMap[f.kategori]) fotoMap[f.kategori] = [];
+      fotoMap[f.kategori].push(f.url);
+    });
 
     setSelected(insp);
     setFotoTemuanMap(fotoMap);

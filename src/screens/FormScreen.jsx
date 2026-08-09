@@ -220,14 +220,16 @@ const PhotoLightbox = ({ url, onClose }) => {
 // requestAccess() dari useCameraGPS (di-warm-up sejak layar ini mount) supaya
 // kamera & GPS sudah "hangat" — foto langsung terasa instan. Sumber daftar
 // foto murni dari `allPhotos` (state induk) difilter per kategori.
-const CameraCapture = ({ label, kategori, onPhotos, allPhotos, errorFoto, onPreview, requestAccess }) => {
+const CameraCapture = ({ label, kategori, onPhotos, allPhotos, errorFoto, onPreview, requestAccess, maxPhotos }) => {
   const photos = allPhotos.filter((p) => p.kategori === kategori);
   const [capState, setCapState] = useState("idle");
   const [permErr, setPermErr] = useState(null);
   const fileInputRef = useRef(null);
   const cachedPosRef = useRef(null);
+  const reachedLimit = maxPhotos != null && photos.length >= maxPhotos;
 
   const handleCaptureClick = async () => {
+    if (reachedLimit) return;
     setPermErr(null);
     setCapState("checking");
     try {
@@ -272,9 +274,15 @@ const CameraCapture = ({ label, kategori, onPhotos, allPhotos, errorFoto, onPrev
         </div>
         {permErr && <div style={{ marginBottom: 10, padding: "8px 12px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600 }}>⛔ {permErr}</div>}
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} style={{ display: "none" }} />
-        <Btn onClick={handleCaptureClick} variant="outline" style={{ padding: "9px", fontSize: 13, width: "100%" }} disabled={isWorking}>
-          {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Ambil Foto"}
-        </Btn>
+        {!reachedLimit ? (
+          <Btn onClick={handleCaptureClick} variant="outline" style={{ padding: "9px", fontSize: 13, width: "100%" }} disabled={isWorking}>
+            {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : photos.length > 0 ? "📷 Tambah Foto Lagi" : "📷 Ambil Foto"}
+          </Btn>
+        ) : (
+          <div style={{ textAlign: "center", fontSize: 12, color: theme.textMuted, padding: "6px 0", fontWeight: 600 }}>
+            ✓ {photos.length} foto sudah cukup
+          </div>
+        )}
         {photos.length > 0 && (
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
             {photos.map((p) => (
@@ -311,7 +319,7 @@ const CheckItemWithFoto = ({ label, status, onStatus, ket, onKet, errorKet, kate
       </>
     )}
     <div style={{ marginTop: 10 }}>
-      <CameraCapture label="Foto dokumentasi" kategori={kategori} onPhotos={onPhotos} allPhotos={allPhotos} errorFoto={errorFoto} onPreview={onPreview} requestAccess={requestAccess} />
+      <CameraCapture label="Foto dokumentasi" kategori={kategori} onPhotos={onPhotos} allPhotos={allPhotos} errorFoto={errorFoto} onPreview={onPreview} requestAccess={requestAccess} maxPhotos={status === "Abnormal" ? null : 1} />
     </div>
   </div>
 );
@@ -321,21 +329,25 @@ const StatusAktifWithFoto = ({ label, status, onStatus, kategori, onPhotos, allP
     <div style={{ fontWeight: 600, fontSize: 14, color: theme.text, marginBottom: 2 }}>{label}</div>
     <ToggleAktif value={status} onChange={onStatus} />
     <div style={{ marginTop: 10 }}>
-      <CameraCapture label="Foto dokumentasi" kategori={kategori} onPhotos={onPhotos} allPhotos={allPhotos} errorFoto={errorFoto} onPreview={onPreview} requestAccess={requestAccess} />
+      <CameraCapture label="Foto dokumentasi" kategori={kategori} onPhotos={onPhotos} allPhotos={allPhotos} errorFoto={errorFoto} onPreview={onPreview} requestAccess={requestAccess} maxPhotos={status === "Tidak Aktif" ? null : 1} />
     </div>
   </div>
 );
 
-// ── Baris ringkasan untuk 1 item cek (dipakai di layar Ringkasan) ────────────
+// ── Baris ringkasan untuk 1 item cek
 const RingkasanItemRow = ({ label, status, ket, kategori, allPhotos, onPreview, isAktifToggle }) => {
-  const foto = allPhotos.find((p) => p.kategori === kategori);
+  const fotos = allPhotos.filter((p) => p.kategori === kategori);
   const isNormalLike = isAktifToggle ? status === "Aktif" : status === "Normal";
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${theme.border}`, gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-        {foto && (
-          <img src={foto.url} alt={label} onClick={() => onPreview?.(foto.url)}
-            style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", cursor: "pointer", flexShrink: 0 }} />
+        {fotos.length > 0 && (
+          <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+            {fotos.map((foto) => (
+              <img key={foto.path} src={foto.url} alt={label} onClick={() => onPreview?.(foto.url)}
+                style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", cursor: "pointer" }} />
+            ))}
+          </div>
         )}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, color: theme.text, fontWeight: 600 }}>{label}</div>
