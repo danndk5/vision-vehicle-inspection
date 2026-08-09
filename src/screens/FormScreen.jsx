@@ -62,6 +62,12 @@ const formatTanggal = (dateStr) => {
   return new Date(dateStr).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 };
 
+const formatNopol = (raw) => {
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const groups = clean.match(/[A-Z]+|\d+/g) || [];
+  return groups.join(" ");
+};
+
 // ── Umur MT & sisa waktu masa berlaku — dihitung ULANG setiap render, sama
 // persis dengan pola di HSEFormScreen.jsx supaya angka konsisten di semua
 // tempat (Teknisi, HSE, admin) ────────────────────────────────────────────
@@ -544,7 +550,8 @@ const FormScreen = ({ onBack, onNav }) => {
   };
 
   const handlePolisiChange = useCallback((val) => {
-    setPolisi(val.toUpperCase());
+    const formatted = formatNopol(val);
+    setPolisi(formatted);
     setKendaraanData(null);
     setLookupStatus("idle");
     setRiwayatSebelumnya([]);
@@ -556,7 +563,7 @@ const FormScreen = ({ onBack, onNav }) => {
         const { data } = await supabase
           .from("kendaraan")
           .select("nomor_polisi, transportir, kapasitas_mt, jumlah_kompartemen, kategori_mt, masa_berlaku_head_truck, masa_berlaku_tangki, tanggal_stnk")
-          .eq("nomor_polisi", val.trim().toUpperCase())
+          .eq("nomor_polisi", formatted.trim())
           .maybeSingle();
         if (data) {
           setKendaraanData(data);
@@ -566,7 +573,7 @@ const FormScreen = ({ onBack, onNav }) => {
           const { data: riwayatData } = await supabase
             .from("inspeksi")
             .select("segel_gps, kabel_gps, segel_bricket_dashcam, segel_kabel_dashcam, segel_bricket_kanan, segel_kabel_kanan, segel_bricket_kiri, segel_kabel_kiri, status, created_at")
-            .eq("nomor_polisi", val.trim().toUpperCase())
+            .eq("nomor_polisi", formatted.trim())
             .order("created_at", { ascending: false })
             .limit(3);
           setRiwayatSebelumnya(riwayatData || []);
@@ -677,7 +684,7 @@ const FormScreen = ({ onBack, onNav }) => {
     try {
       const { data, error: inspErr } = await supabase.from("inspeksi").insert([{
         user_id: currentUser,
-        nomor_polisi: polisi.trim().toUpperCase(),
+        nomor_polisi: polisi.trim(),
         nama_pemeriksa: pemeriksa,
         perusahaan_transportir: kendaraanData?.transportir || "",
         status_gps: gps.status,

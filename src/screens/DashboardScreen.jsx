@@ -372,6 +372,7 @@ const DashboardScreen = ({ role, onNav, onLogout, onOpenDetail, onOpenTugas, ini
         .from("inspeksi")
         .select("*")
         .eq("user_id", user.id)
+        .eq("is_submitted", true)
         .order("created_at", { ascending: false });
 
       setInspeksiAll(inspeksiData || []);
