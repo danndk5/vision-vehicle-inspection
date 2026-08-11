@@ -128,12 +128,6 @@ const calcSisaWaktu = (tanggalTarget) => {
   return `${years} Tahun, ${months} Bulan, ${days} Hari`;
 };
 
-// ── Format Nomor Polisi otomatis ────────────────────────────────────────────
-// Membersihkan input (uppercase, buang selain huruf/angka), lalu menyisipkan
-// spasi otomatis di setiap transisi huruf→angka dan angka→huruf, sehingga
-// user cukup mengetik "b1234bbb" dan hasilnya otomatis "B 1234 BBB" — tidak
-// perlu menekan tombol spasi sendiri. Bekerja progresif walau input belum
-// lengkap (misal baru "b1234b" -> "B 1234 B").
 const formatNopol = (raw) => {
   const clean = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   return clean
@@ -692,22 +686,6 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     </div>
   );
 
-  // Lookup nomor polisi — SELALU dari database admin, tidak ada mode "isi manual".
-  //
-  // FIX BUG (data hilang setelah kembali lalu Lanjut lagi): reset checkpoint &
-  // foto temuan dipindah ke SINI (bukan lagi di handleLanjutKategori). Reset
-  // itu seharusnya cuma terjadi kalau nomor polisi/kendaraan benar-benar
-  // GANTI (kendaraan baru = wajar mulai dari nol), BUKAN setiap kali user
-  // mundur ke step Kategori MT lalu klik Lanjut lagi untuk kendaraan yang
-  // SAMA. Sebelumnya handleLanjutKategori selalu memanggil
-  // initCheckpoints()/setFotoTemuan([]) tanpa syarat setiap kali transisi
-  // kategori → ujikedap terjadi, jadi progres checkpoint & foto yang sudah
-  // diisi (termasuk yang dipulihkan dari draft) ikut terhapus.
-  //
-  // IMPROVEMENT: input nomor polisi sekarang diformat otomatis — huruf
-  // kapital otomatis + spasi otomatis disisipkan di setiap transisi
-  // huruf↔angka, jadi user tinggal ketik "b1234bbb" dan hasilnya langsung
-  // "B 1234 BBB" tanpa perlu menekan spasi sendiri. Lihat formatNopol().
   const handlePolisiChange = useCallback((val) => {
     const formatted = formatNopol(val);
     setKendaraan((p) => ({
@@ -788,11 +766,11 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
   const handleLanjutKendaraan = () => {
     if (lookupStatus !== "found") {
-      alert("Nomor Polisi tidak terdaftar di database Pertamina. Uji kedap tidak dapat dilanjutkan — hubungi admin untuk registrasi kendaraan terlebih dahulu.");
+      alert("Nomor Polisi tidak terdaftar. Uji kedap tidak dapat dilanjutkan.");
       return;
     }
     if (isExpired(kendaraan.masaBerlakuHeadTruck) || isExpired(kendaraan.masaBerlakuTangki)) {
-      alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Uji kedap tidak dapat dilanjutkan — hubungi admin untuk perpanjangan/registrasi ulang.");
+      alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Uji kedap tidak dapat dilanjutkan.");
       return;
     }
     navigateToStep("kategori");
@@ -957,7 +935,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Data Kendaraan</div>
-          <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>Cari nomor polisi terdaftar di database Pertamina</div>
+          <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>Cari nomor polisi yang terdaftar </div>
         </div>
 
         {restoreBanner}
