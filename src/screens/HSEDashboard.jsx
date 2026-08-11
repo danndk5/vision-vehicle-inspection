@@ -19,38 +19,6 @@ const statusInfo = (status, theme) => {
   return { label: status || "-", bg: theme.surfaceAlt, color: theme.textMuted };
 };
 
-// ── Helper: hitung batas tanggal awal berdasarkan periode filter ──────────────
-// Kalender, bukan rolling — "Minggu Ini" mulai dari Senin minggu berjalan,
-// "Bulan Ini" mulai dari tanggal 1 bulan berjalan, "6 Bulan Ini" mulai dari
-// tanggal 1, 6 bulan ke belakang (termasuk bulan berjalan).
-const getRangeStart = (mode) => {
-  const now = new Date();
-
-  if (mode === "minggu") {
-    const day = now.getDay(); // 0 = Minggu, 1 = Senin, ...
-    const diffKeSenin = day === 0 ? 6 : day - 1;
-    const start = new Date(now);
-    start.setDate(now.getDate() - diffKeSenin);
-    start.setHours(0, 0, 0, 0);
-    return start;
-  }
-  if (mode === "bulan") {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-  if (mode === "6bulan") {
-    return new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  }
-  return null; // "semua"
-};
-
-const FILTER_OPTIONS = [
-  { value: "semua",  label: "Semua"        },
-  { value: "minggu", label: "Minggu Ini"   },
-  { value: "bulan",  label: "Bulan Ini"    },
-  { value: "6bulan", label: "6 Bulan Ini"  },
-  { value: "custom", label: "Kustom"       },
-];
-
 // ── Helper: sisa hari sampai tanggal tertentu (negatif = sudah lewat) ─────────
 const sisaHari = (tanggal) => {
   if (!tanggal) return null;
@@ -136,76 +104,6 @@ const ExpiryListModal = ({ theme, items, onClose }) => (
     </div>
   </div>
 );
-
-// ── FilterBar ──────────────────────────────────────────────────────────────
-// Helper: deteksi apakah latar tema saat ini gelap (dari luminance theme.bg),
-// dipakai untuk memaksa color-scheme pada <input type="date"> supaya ikon
-// kalender & teks placeholder-nya ikut terang saat mode gelap aktif —
-// browser secara default merender ikon itu gelap dan nyaris tak terlihat
-// di atas latar gelap kalau color-scheme tidak diset.
-const getIsDarkBg = (hex) => {
-  if (!hex || hex[0] !== "#" || hex.length < 7) return false;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.5;
-};
-
-const FilterBar = ({ theme, filterMode, setFilterMode, customStart, setCustomStart, customEnd, setCustomEnd }) => {
-  const isDarkBg = getIsDarkBg(theme.bg);
-  const dateInputStyle = {
-    width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${theme.border}`,
-    background: theme.surfaceAlt || theme.surface, color: theme.text, fontSize: 12, boxSizing: "border-box",
-    fontFamily: "'DM Sans', sans-serif", outline: "none",
-    colorScheme: isDarkBg ? "dark" : "light",
-  };
-
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-        {FILTER_OPTIONS.map((opt) => (
-          <div
-            key={opt.value}
-            onClick={() => setFilterMode(opt.value)}
-            style={{
-              flexShrink: 0, padding: "7px 14px", borderRadius: 20, cursor: "pointer",
-              fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
-              background: filterMode === opt.value ? theme.primary : theme.surface,
-              color: filterMode === opt.value ? "#fff" : theme.textMuted,
-              border: `1.5px solid ${filterMode === opt.value ? theme.primary : theme.border}`,
-            }}
-          >
-            {opt.label}
-          </div>
-        ))}
-      </div>
-
-      {filterMode === "custom" && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>Dari</div>
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              style={dateInputStyle}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>Sampai</div>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              style={dateInputStyle}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ── SearchBar — cari cepat nomor polisi dari beranda ──────────────────────────
 const SearchBar = ({ theme, value, onChange }) => (
@@ -304,17 +202,15 @@ const InspeksiList = ({ title, items, onBack, theme }) => (
 );
 
 // ── HSEDashboard ──────────────────────────────────────────────────────────────
+// Catatan: fitur "pencairan" dan filter periode (minggu/bulan/6 bulan/kustom)
+// SENGAJA tidak ada di akun HSE ini — akun ini fokus ke Pengecekan & Tindak
+// Lanjut. Filter periode dan pencairan sudah full di-handle di akun Depot.
 const HSEDashboard = ({ role, onNav, onLogout }) => {
   const { theme } = useTheme();
   const [view,        setView]        = useState("dashboard");
   const [currentUser, setCurrentUser] = useState(null);
   const [inspeksiAll, setInspeksiAll] = useState([]);
   const [loading,     setLoading]     = useState(true);
-
-  // Filter periode — mempengaruhi angka & daftar di beranda
-  const [filterMode,   setFilterMode]   = useState("semua");
-  const [customStart,  setCustomStart]  = useState("");
-  const [customEnd,    setCustomEnd]    = useState("");
 
   // Cari nomor polisi cepat
   const [searchQuery, setSearchQuery] = useState("");
@@ -377,32 +273,15 @@ const HSEDashboard = ({ role, onNav, onLogout }) => {
     loadData();
   }, []);
 
-  // Terapkan filter periode ke seluruh data
+  // Terapkan pencarian nomor polisi ke seluruh data (tanpa filter periode —
+  // lihat catatan di atas komponen)
   const inspeksiFiltered = useMemo(() => {
     let result = inspeksiAll;
-
-    if (filterMode === "custom") {
-      if (customStart || customEnd) {
-        const start = customStart ? new Date(customStart + "T00:00:00") : null;
-        const end   = customEnd   ? new Date(customEnd   + "T23:59:59") : null;
-        result = result.filter((i) => {
-          const t = new Date(i.created_at);
-          if (start && t < start) return false;
-          if (end && t > end) return false;
-          return true;
-        });
-      }
-    } else if (filterMode !== "semua") {
-      const start = getRangeStart(filterMode);
-      result = result.filter((i) => new Date(i.created_at) >= start);
-    }
-
     if (searchQuery.trim()) {
       result = result.filter((i) => i.nomor_polisi?.toUpperCase().includes(searchQuery.trim()));
     }
-
     return result;
-  }, [inspeksiAll, filterMode, customStart, customEnd, searchQuery]);
+  }, [inspeksiAll, searchQuery]);
 
 
   // Status yang tersimpan: "lulus" | "tidak_lulus" | "selesai"
@@ -450,18 +329,6 @@ const HSEDashboard = ({ role, onNav, onLogout }) => {
         {/* Cari nomor polisi */}
         <SearchBar theme={theme} value={searchQuery} onChange={setSearchQuery} />
 
-        <SectionLabel>Filter Periode</SectionLabel>
-        <FilterBar
-          theme={theme}
-          filterMode={filterMode}
-          setFilterMode={setFilterMode}
-          customStart={customStart}
-          setCustomStart={setCustomStart}
-          customEnd={customEnd}
-          setCustomEnd={setCustomEnd}
-        />
-
-
         <SectionLabel>Ringkasan Uji Kedap</SectionLabel>
         <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
           <StatCard value={inspeksiFiltered.length} label={"Total\nDiperiksa"}         bg={theme.primaryLight} color={theme.primary}  onClick={() => setView("list-all")} />
@@ -471,7 +338,6 @@ const HSEDashboard = ({ role, onNav, onLogout }) => {
 
         <div style={{ padding: "14px 16px", borderRadius: 14, background: theme.surface, border: `1px solid ${theme.border}`, fontSize: 13, color: theme.textMuted, lineHeight: 1.6 }}>
           <div style={{ fontWeight: 700, color: theme.text, marginBottom: 4 }}>💡 Panduan</div>
-          <div>• Gunakan filter periode untuk melihat data per minggu/bulan/6 bulan/kustom</div>
           <div>• Klik angka untuk lihat daftar kendaraan</div>
           <div>• Gunakan <b>Pengecekan</b> untuk uji kedap baru</div>
           <div>• Gunakan <b>Tindak Lanjut</b> untuk tangani temuan</div>

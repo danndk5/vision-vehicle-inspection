@@ -128,6 +128,19 @@ const calcSisaWaktu = (tanggalTarget) => {
   return `${years} Tahun, ${months} Bulan, ${days} Hari`;
 };
 
+// ── Format Nomor Polisi otomatis ────────────────────────────────────────────
+// Membersihkan input (uppercase, buang selain huruf/angka), lalu menyisipkan
+// spasi otomatis di setiap transisi huruf→angka dan angka→huruf, sehingga
+// user cukup mengetik "b1234bbb" dan hasilnya otomatis "B 1234 BBB" — tidak
+// perlu menekan tombol spasi sendiri. Bekerja progresif walau input belum
+// lengkap (misal baru "b1234b" -> "B 1234 B").
+const formatNopol = (raw) => {
+  const clean = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return clean
+    .replace(/([A-Z])(\d)/g, "$1 $2")
+    .replace(/(\d)([A-Z])/g, "$1 $2");
+};
+
 // ── applyOverlay (shared) ─────────────────────────────────────────────────────
 const applyOverlay = async (file, pos) => {
   let serverTime = new Date();
@@ -310,8 +323,12 @@ const CameraCaptureSingle = ({ label, onFoto, foto, errorFoto, onPreview, reques
   );
 };
 
-// ── CameraCapture — multi foto dengan keterangan per foto ─────────────────────
-const CameraCaptureMulti = ({ kategori, fotoList, onFotoList, onPreview, requestAccess }) => {
+// ── TemuanFotoGroup — satu "sesi temuan": 1 keterangan + banyak foto (angle) ──
+// Dipakai saat status "Tidak Kedap". Setiap temuan boleh punya beberapa foto
+// (sudut pandang berbeda dari kondisi/kebocoran yang sama) di bawah satu
+// keterangan. Untuk menambah temuan baru (kondisi/lokasi berbeda), gunakan
+// tombol "Temuan Lainnya" di TemuanList.
+const TemuanFotoGroup = ({ index, temuan, onUpdate, onRemove, onPreview, requestAccess, canRemove }) => {
   const [capState, setCapState] = useState("idle");
   const [permErr,  setPermErr]  = useState(null);
   const fileInputRef = useRef(null);
@@ -335,8 +352,8 @@ const CameraCaptureMulti = ({ kategori, fotoList, onFotoList, onPreview, request
     if (!file) return;
     setCapState("processing");
     try {
-      const result = await uploadFoto(file, `${kategori}-${Date.now()}`, cachedPosRef.current);
-      onFotoList((prev) => [...prev, { ...result, keterangan: "" }]);
+      const result = await uploadFoto(file, `temuan-${index}-${Date.now()}`, cachedPosRef.current);
+      onUpdate({ ...temuan, fotos: [...temuan.fotos, result] });
     } catch (err) {
       alert("⚠️ " + err.message);
     } finally {
@@ -346,20 +363,68 @@ const CameraCaptureMulti = ({ kategori, fotoList, onFotoList, onPreview, request
     }
   };
 
-  const removeFoto = async (idx) => {
-    const foto = fotoList[idx];
+  const removeFoto = async (fIdx) => {
+    const foto = temuan.fotos[fIdx];
     if (foto?.path) await supabase.storage.from("foto-inspeksi").remove([foto.path]).catch(() => {});
-    onFotoList((prev) => prev.filter((_, i) => i !== idx));
+    onUpdate({ ...temuan, fotos: temuan.fotos.filter((_, i) => i !== fIdx) });
   };
 
-  const setKeterangan = (idx, val) => {
-    onFotoList((prev) => prev.map((f, i) => i === idx ? { ...f, keterangan: val } : f));
-  };
+  const setKeterangan = (val) => onUpdate({ ...temuan, keterangan: val });
 
   const isWorking = capState !== "idle";
 
   return (
-    <div>
+    <div style={{ marginBottom: 14, padding: 14, borderRadius: 12, background: theme.surfaceAlt, border: `1px solid ${theme.border}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: theme.text }}>📌 Temuan {index + 1}</div>
+        {canRemove && (
+          <div onClick={onRemove} style={{ cursor: "pointer", fontWeight: 700, color: theme.danger, fontSize: 12 }}>✕ Hapus Temuan</div>
+        )}
+      </div>
+
+      <textarea
+        placeholder="Keterangan temuan ini (wajib)..."
+        value={temuan.keterangan}
+        onChange={(e) => setKeterangan(e.target.value)}
+        style={{
+          width: "100%", padding: "8px 10px", borderRadius: 8,
+          border: `1.5px solid ${!temuan.keterangan.trim() ? theme.danger : theme.border}`,
+          background: !temuan.keterangan.trim() ? theme.dangerLight : theme.surface,
+          color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+          resize: "none", minHeight: 60, boxSizing: "border-box", outline: "none", marginBottom: 8,
+        }}
+      />
+      {!temuan.keterangan.trim() && (
+        <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Keterangan wajib diisi.</div>
+      )}
+
+      {temuan.fotos.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {temuan.fotos.map((foto, fIdx) => (
+            <div key={foto.path || fIdx} style={{ position: "relative" }}>
+              <img
+                src={foto.url}
+                alt={foto.name}
+                onClick={() => onPreview?.(foto.url)}
+                style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", cursor: "pointer", border: `1px solid ${theme.primary}` }}
+              />
+              <div
+                onClick={() => removeFoto(fIdx)}
+                style={{
+                  position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
+                  background: theme.danger, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, cursor: "pointer", lineHeight: 1,
+                }}
+              >✕</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {temuan.fotos.length === 0 && (
+        <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 foto wajib diupload untuk temuan ini.</div>
+      )}
+
       {permErr && (
         <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600 }}>
           ⛔ {permErr}
@@ -367,49 +432,49 @@ const CameraCaptureMulti = ({ kategori, fotoList, onFotoList, onPreview, request
       )}
       <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
         onChange={handleFileChange} style={{ display: "none" }} />
-
-      {fotoList.map((foto, idx) => (
-        <div key={foto.path} style={{ marginBottom: 10, padding: 12, borderRadius: 10, background: theme.surfaceAlt, border: `1px solid ${theme.border}` }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <img
-                src={foto.url}
-                alt={foto.name}
-                onClick={() => onPreview?.(foto.url)}
-                style={{ width: 42, height: 42, borderRadius: 6, objectFit: "cover", cursor: "pointer", border: `1px solid ${theme.primary}`, flexShrink: 0 }}
-              />
-              <div style={{ fontSize: 12, color: theme.primary, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                ✓ Foto {idx + 1}: {foto.name}
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              <div onClick={() => onPreview?.(foto.url)} style={{ cursor: "pointer", fontSize: 12, color: theme.primary, fontWeight: 700 }}>
-                🔍 Lihat
-              </div>
-              <div onClick={() => removeFoto(idx)} style={{ cursor: "pointer", fontWeight: 700, color: theme.danger, fontSize: 13 }}>✕</div>
-            </div>
-          </div>
-          <textarea
-            placeholder="Keterangan foto ini (wajib)..."
-            value={foto.keterangan}
-            onChange={(e) => setKeterangan(idx, e.target.value)}
-            style={{
-              width: "100%", padding: "8px 10px", borderRadius: 8,
-              border: `1.5px solid ${!foto.keterangan.trim() ? theme.danger : theme.border}`,
-              background: !foto.keterangan.trim() ? theme.dangerLight : theme.surface,
-              color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
-              resize: "none", minHeight: 60, boxSizing: "border-box", outline: "none",
-            }}
-          />
-          {!foto.keterangan.trim() && (
-            <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginTop: 3 }}>⚠️ Keterangan wajib diisi.</div>
-          )}
-        </div>
-      ))}
-
       <Btn onClick={handleCaptureClick} variant="outline"
-        style={{ padding: "9px", fontSize: 13, width: "100%" }} disabled={isWorking}>
-        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : `📷 Tambah Foto Temuan`}
+        style={{ padding: "8px", fontSize: 12, width: "100%" }} disabled={isWorking}>
+        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto (sudut lain)"}
+      </Btn>
+    </div>
+  );
+};
+
+// ── TemuanList — daftar sesi temuan, bisa ditambah dengan "Temuan Lainnya" ────
+const TemuanList = ({ temuanList, onTemuanList, onPreview, requestAccess }) => {
+  const addTemuan = () => {
+    onTemuanList((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, keterangan: "", fotos: [] }]);
+  };
+
+  const updateTemuan = (idx, updated) => {
+    onTemuanList((prev) => prev.map((t, i) => (i === idx ? updated : t)));
+  };
+
+  const removeTemuan = async (idx) => {
+    const t = temuanList[idx];
+    if (t?.fotos?.length) {
+      const paths = t.fotos.map((f) => f.path).filter(Boolean);
+      if (paths.length) await supabase.storage.from("foto-inspeksi").remove(paths).catch(() => {});
+    }
+    onTemuanList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div>
+      {temuanList.map((t, idx) => (
+        <TemuanFotoGroup
+          key={t.id}
+          index={idx}
+          temuan={t}
+          onUpdate={(updated) => updateTemuan(idx, updated)}
+          onRemove={() => removeTemuan(idx)}
+          onPreview={onPreview}
+          requestAccess={requestAccess}
+          canRemove={temuanList.length > 1}
+        />
+      ))}
+      <Btn onClick={addTemuan} variant="outline" style={{ padding: "9px", fontSize: 13, width: "100%" }}>
+        ➕ Temuan Lainnya
       </Btn>
     </div>
   );
@@ -489,6 +554,10 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   const initCheckpoints = () =>
     CHECKPOINTS.map((cp) => ({ menit: cp.menit, status: "", foto: null }));
 
+  // fotoTemuan: array of { id, keterangan, fotos: [{name,url,path}, ...] }
+  // — satu "temuan" = satu keterangan + boleh banyak foto (angle berbeda).
+  const initTemuan = () => [{ id: `${Date.now()}-init`, keterangan: "", fotos: [] }];
+
   const [checkpoints,  setCheckpoints]  = useState(initCheckpoints);
   const [fotoTemuan,   setFotoTemuan]   = useState([]);
 
@@ -503,8 +572,8 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   const submittedRef = useRef(false);
 
   useEffect(() => {
-    const cpPaths   = checkpoints.map((cp) => cp.foto?.path).filter(Boolean);
-    const temuanPaths = fotoTemuan.map((f) => f.path).filter(Boolean);
+    const cpPaths     = checkpoints.map((cp) => cp.foto?.path).filter(Boolean);
+    const temuanPaths = fotoTemuan.flatMap((t) => (t.fotos || []).map((f) => f.path)).filter(Boolean);
     allFotoPaths.current = [...cpPaths, ...temuanPaths];
   }, [checkpoints, fotoTemuan]);
 
@@ -541,7 +610,20 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         setKategoriMT(draft.kategoriMT || "");
         setLookupStatus(draft.lookupStatus || "idle");
         setCheckpoints(draft.checkpoints && draft.checkpoints.length ? draft.checkpoints : initCheckpoints());
-        setFotoTemuan(draft.fotoTemuan || []);
+        // Kompatibilitas draft lama (format flat {url,path,keterangan}) —
+        // dikonversi jadi satu temuan per foto supaya tidak error/hilang.
+        if (draft.fotoTemuan && draft.fotoTemuan.length) {
+          const looksGrouped = draft.fotoTemuan[0] && Array.isArray(draft.fotoTemuan[0].fotos);
+          if (looksGrouped) {
+            setFotoTemuan(draft.fotoTemuan);
+          } else {
+            setFotoTemuan(draft.fotoTemuan.map((f, i) => ({
+              id: `legacy-${i}`, keterangan: f.keterangan || "", fotos: f.url ? [f] : [],
+            })));
+          }
+        } else {
+          setFotoTemuan([]);
+        }
         setRiwayatSebelumnya(draft.riwayatSebelumnya || []);
         draftCreatedAtRef.current = draft.createdAt || Date.now();
         setShowRestoreBanner(true);
@@ -556,7 +638,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   useEffect(() => {
     if (!ready) return;
     const hasProgress =
-      step !== "sop" || sopPage > 0 || kendaraan.polisi.trim() || kategoriMT || fotoTemuan.length > 0;
+      step !== "sop" || sopPage > 0 || kendaraan.polisi.trim() || kategoriMT || fotoTemuan.some((t) => t.fotos.length > 0 || t.keterangan.trim());
     if (!hasProgress) { clearDraft(); draftCreatedAtRef.current = null; return; }
     if (!draftCreatedAtRef.current) draftCreatedAtRef.current = Date.now();
     saveDraft({ createdAt: draftCreatedAtRef.current, step, sopPage, kendaraan, kategoriMT, lookupStatus, checkpoints, fotoTemuan, riwayatSebelumnya });
@@ -621,10 +703,15 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   // initCheckpoints()/setFotoTemuan([]) tanpa syarat setiap kali transisi
   // kategori → ujikedap terjadi, jadi progres checkpoint & foto yang sudah
   // diisi (termasuk yang dipulihkan dari draft) ikut terhapus.
+  //
+  // IMPROVEMENT: input nomor polisi sekarang diformat otomatis — huruf
+  // kapital otomatis + spasi otomatis disisipkan di setiap transisi
+  // huruf↔angka, jadi user tinggal ketik "b1234bbb" dan hasilnya langsung
+  // "B 1234 BBB" tanpa perlu menekan spasi sendiri. Lihat formatNopol().
   const handlePolisiChange = useCallback((val) => {
-    const upper = val.toUpperCase();
+    const formatted = formatNopol(val);
     setKendaraan((p) => ({
-      ...p, polisi: upper, kapasitas: "", kompartemen: "", transportir: "",
+      ...p, polisi: formatted, kapasitas: "", kompartemen: "", transportir: "",
       masaBerlakuHeadTruck: "", masaBerlakuTangki: "", tanggalStnk: "",
     }));
     setLookupStatus("idle");
@@ -632,7 +719,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     setCheckpoints(initCheckpoints());
     setFotoTemuan([]);
     if (lookupTimer.current) clearTimeout(lookupTimer.current);
-    if (!upper.trim()) return;
+    if (!formatted.trim()) return;
 
     lookupTimer.current = setTimeout(async () => {
       setLookupStatus("loading");
@@ -640,7 +727,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         const { data } = await supabase
           .from("kendaraan")
           .select("transportir, kapasitas_mt, jumlah_kompartemen, kategori_mt, masa_berlaku_head_truck, masa_berlaku_tangki, tanggal_stnk")
-          .eq("nomor_polisi", upper.trim()).maybeSingle();
+          .eq("nomor_polisi", formatted.trim()).maybeSingle();
         if (data) {
           setKendaraan((p) => ({
             ...p,
@@ -657,7 +744,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
           const { data: riwayatData } = await supabase
             .from("inspeksi_hse")
             .select("status, created_at")
-            .eq("nomor_polisi", upper.trim())
+            .eq("nomor_polisi", formatted.trim())
             .order("created_at", { ascending: false })
             .limit(3);
           setRiwayatSebelumnya(riwayatData || []);
@@ -682,6 +769,11 @@ const HSEFormScreen = ({ onBack, onNav }) => {
       return next;
     });
     if (status === "kedap") setFotoTemuan([]);
+    if (status === "tidak_kedap") {
+      // Siapkan minimal satu grup temuan kosong begitu status tidak kedap
+      // dipilih, supaya form temuan langsung terlihat siap diisi.
+      setFotoTemuan((prev) => (prev.length > 0 ? prev : initTemuan()));
+    }
   };
 
   const setCheckpointFoto = (idx, foto) => {
@@ -723,10 +815,11 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         if (!cp.foto) e[`cp_${i}_foto`] = true;
       });
     } else {
-      fotoTemuan.forEach((f, i) => {
-        if (!f.keterangan.trim()) e[`temuan_${i}_ket`] = true;
-      });
       if (fotoTemuan.length === 0) e.temuan_foto = true;
+      fotoTemuan.forEach((t, i) => {
+        if (!t.keterangan.trim()) e[`temuan_${i}_ket`] = true;
+        if (!t.fotos || t.fotos.length === 0) e[`temuan_${i}_foto`] = true;
+      });
     }
     return e;
   };
@@ -774,13 +867,18 @@ const HSEFormScreen = ({ onBack, onNav }) => {
       if (cpErr) throw cpErr;
 
       if (fotoTemuan.length > 0) {
-        const { error: temuanErr } = await supabase.from("foto_inspeksi_hse").insert(
-          fotoTemuan.map((f) => ({
+        // Setiap temuan bisa punya beberapa foto (angle berbeda) — diratakan
+        // jadi satu baris per foto, dengan keterangan yang sama untuk semua
+        // foto dalam temuan yang sama, agar tetap kompatibel dengan skema
+        // tabel foto_inspeksi_hse yang sudah ada (url + keterangan).
+        const rows = fotoTemuan.flatMap((t) =>
+          t.fotos.map((f) => ({
             inspeksi_hse_id: inspData.id,
             url:             f.url,
-            keterangan:      f.keterangan,
+            keterangan:      t.keterangan,
           }))
         );
+        const { error: temuanErr } = await supabase.from("foto_inspeksi_hse").insert(rows);
         if (temuanErr) throw temuanErr;
       }
 
@@ -1008,6 +1106,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
   }
 
   if (step === "ringkasan") {
+    const totalFotoTemuan = fotoTemuan.reduce((sum, t) => sum + t.fotos.length, 0);
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
@@ -1064,12 +1163,18 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
           {statusAkhir === "tidak_kedap" && (
             <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
-              <SectionLabel>Foto Temuan ({fotoTemuan.length})</SectionLabel>
-              {fotoTemuan.map((f, idx) => (
-                <div key={idx} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: `1px solid ${theme.border}` }}>
-                  <img src={f.url} alt="temuan" onClick={() => setPreviewUrl(f.url)}
-                    style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", cursor: "pointer", flexShrink: 0 }} />
-                  <div style={{ fontSize: 12, color: theme.textMuted, alignSelf: "center" }}>{f.keterangan}</div>
+              <SectionLabel>Foto Temuan ({fotoTemuan.length} temuan · {totalFotoTemuan} foto)</SectionLabel>
+              {fotoTemuan.map((t, idx) => (
+                <div key={t.id} style={{ padding: "10px 0", borderBottom: idx < fotoTemuan.length - 1 ? `1px solid ${theme.border}` : "none" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 6 }}>
+                    Temuan {idx + 1}: <span style={{ fontWeight: 400, color: theme.textMuted }}>{t.keterangan}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {t.fotos.map((f, fIdx) => (
+                      <img key={f.path || fIdx} src={f.url} alt="temuan" onClick={() => setPreviewUrl(f.url)}
+                        style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", cursor: "pointer", flexShrink: 0 }} />
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1191,15 +1296,15 @@ const HSEFormScreen = ({ onBack, onNav }) => {
           <div style={{ marginTop: 8, padding: 16, borderRadius: 14, background: theme.surface, border: `2px solid ${theme.danger}` }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>❌ Inspeksi Temuan</div>
             <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
-              Upload foto temuan dan isi keterangan untuk setiap foto (wajib).
+              Catat setiap temuan dengan keterangannya. Untuk satu temuan boleh tambah beberapa foto dari sudut berbeda,
+              dan bisa tambah temuan lain lewat "Temuan Lainnya" (wajib).
             </div>
             {errors.temuan_foto && (
-              <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 foto temuan wajib diupload.</div>
+              <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 temuan dengan foto wajib diisi.</div>
             )}
-            <CameraCaptureMulti
-              kategori="temuan"
-              fotoList={fotoTemuan}
-              onFotoList={setFotoTemuan}
+            <TemuanList
+              temuanList={fotoTemuan}
+              onTemuanList={setFotoTemuan}
               onPreview={setPreviewUrl}
               requestAccess={requestAccess}
             />
