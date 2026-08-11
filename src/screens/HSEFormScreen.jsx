@@ -952,7 +952,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
             )}
             {lookupStatus === "notfound" && (
               <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600 }}>
-                ⛔ Nomor Polisi tidak terdaftar di database Pertamina. Hubungi admin untuk registrasi kendaraan terlebih dahulu.
+                ⛔ Nomor Polisi tidak terdaftar.
               </div>
             )}
           </div>
