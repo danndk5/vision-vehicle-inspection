@@ -428,7 +428,7 @@ const TemuanFotoGroup = ({ index, temuan, onUpdate, onRemove, onPreview, request
         onChange={handleFileChange} style={{ display: "none" }} />
       <Btn onClick={handleCaptureClick} variant="outline"
         style={{ padding: "8px", fontSize: 12, width: "100%" }} disabled={isWorking}>
-        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto (sudut lain)"}
+        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto"}
       </Btn>
     </div>
   );
@@ -776,10 +776,6 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     navigateToStep("kategori");
   };
 
-  // Catatan: TIDAK lagi mereset checkpoint/fotoTemuan di sini — lihat
-  // penjelasan di handlePolisiChange. Progres yang sudah diisi (atau
-  // dipulihkan dari draft) tetap aman walau user mundur ke step ini dulu
-  // lalu klik Lanjut lagi untuk kendaraan yang sama.
   const handleLanjutKategori = () => {
     if (!kategoriMT) { alert("Pilih kategori MT terlebih dahulu!"); return; }
     navigateToStep("ujikedap");
@@ -1272,13 +1268,12 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
         {idxTidakKedap >= 0 && (
           <div style={{ marginTop: 8, padding: 16, borderRadius: 14, background: theme.surface, border: `2px solid ${theme.danger}` }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>❌ Inspeksi Temuan</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>Inspeksi Temuan</div>
             <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
-              Catat setiap temuan dengan keterangannya. Untuk satu temuan boleh tambah beberapa foto dari sudut berbeda,
-              dan bisa tambah temuan lain lewat "Temuan Lainnya" (wajib).
+              Catat setiap temuan dengan keterangannya.
             </div>
             {errors.temuan_foto && (
-              <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 temuan dengan foto wajib diisi.</div>
+              <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}></div>
             )}
             <TemuanList
               temuanList={fotoTemuan}
