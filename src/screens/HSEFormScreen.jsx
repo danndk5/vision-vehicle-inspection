@@ -128,6 +128,12 @@ const calcSisaWaktu = (tanggalTarget) => {
   return `${years} Tahun, ${months} Bulan, ${days} Hari`;
 };
 
+// ── Format Nomor Polisi otomatis ────────────────────────────────────────────
+// Membersihkan input (uppercase, buang selain huruf/angka), lalu menyisipkan
+// spasi otomatis di setiap transisi huruf→angka dan angka→huruf, sehingga
+// user cukup mengetik "b1234bbb" dan hasilnya otomatis "B 1234 BBB" — tidak
+// perlu menekan tombol spasi sendiri. Bekerja progresif walau input belum
+// lengkap (misal baru "b1234b" -> "B 1234 B").
 const formatNopol = (raw) => {
   const clean = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   return clean
@@ -428,7 +434,7 @@ const TemuanFotoGroup = ({ index, temuan, onUpdate, onRemove, onPreview, request
         onChange={handleFileChange} style={{ display: "none" }} />
       <Btn onClick={handleCaptureClick} variant="outline"
         style={{ padding: "8px", fontSize: 12, width: "100%" }} disabled={isWorking}>
-        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto"}
+        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto (sudut lain)"}
       </Btn>
     </div>
   );
@@ -686,6 +692,22 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     </div>
   );
 
+  // Lookup nomor polisi — SELALU dari database admin, tidak ada mode "isi manual".
+  //
+  // FIX BUG (data hilang setelah kembali lalu Lanjut lagi): reset checkpoint &
+  // foto temuan dipindah ke SINI (bukan lagi di handleLanjutKategori). Reset
+  // itu seharusnya cuma terjadi kalau nomor polisi/kendaraan benar-benar
+  // GANTI (kendaraan baru = wajar mulai dari nol), BUKAN setiap kali user
+  // mundur ke step Kategori MT lalu klik Lanjut lagi untuk kendaraan yang
+  // SAMA. Sebelumnya handleLanjutKategori selalu memanggil
+  // initCheckpoints()/setFotoTemuan([]) tanpa syarat setiap kali transisi
+  // kategori → ujikedap terjadi, jadi progres checkpoint & foto yang sudah
+  // diisi (termasuk yang dipulihkan dari draft) ikut terhapus.
+  //
+  // IMPROVEMENT: input nomor polisi sekarang diformat otomatis — huruf
+  // kapital otomatis + spasi otomatis disisipkan di setiap transisi
+  // huruf↔angka, jadi user tinggal ketik "b1234bbb" dan hasilnya langsung
+  // "B 1234 BBB" tanpa perlu menekan spasi sendiri. Lihat formatNopol().
   const handlePolisiChange = useCallback((val) => {
     const formatted = formatNopol(val);
     setKendaraan((p) => ({
@@ -766,16 +788,20 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
   const handleLanjutKendaraan = () => {
     if (lookupStatus !== "found") {
-      alert("Nomor Polisi tidak terdaftar. Uji kedap tidak dapat dilanjutkan.");
+      alert("Nomor Polisi tidak terdaftar di database Pertamina. Uji kedap tidak dapat dilanjutkan — hubungi admin untuk registrasi kendaraan terlebih dahulu.");
       return;
     }
     if (isExpired(kendaraan.masaBerlakuHeadTruck) || isExpired(kendaraan.masaBerlakuTangki)) {
-      alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Uji kedap tidak dapat dilanjutkan.");
+      alert("Masa berlaku Head Truck/Tangki kendaraan ini sudah kedaluwarsa. Uji kedap tidak dapat dilanjutkan — hubungi admin untuk perpanjangan/registrasi ulang.");
       return;
     }
     navigateToStep("kategori");
   };
 
+  // Catatan: TIDAK lagi mereset checkpoint/fotoTemuan di sini — lihat
+  // penjelasan di handlePolisiChange. Progres yang sudah diisi (atau
+  // dipulihkan dari draft) tetap aman walau user mundur ke step ini dulu
+  // lalu klik Lanjut lagi untuk kendaraan yang sama.
   const handleLanjutKategori = () => {
     if (!kategoriMT) { alert("Pilih kategori MT terlebih dahulu!"); return; }
     navigateToStep("ujikedap");
@@ -931,7 +957,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
           </div>
           <div style={{ fontWeight: 800, fontSize: 18, color: theme.text }}>Data Kendaraan</div>
-          <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>Cari nomor polisi yang terdaftar </div>
+          <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>Cari nomor polisi terdaftar di database Pertamina</div>
         </div>
 
         {restoreBanner}
@@ -948,7 +974,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
             )}
             {lookupStatus === "notfound" && (
               <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600 }}>
-                ⛔ Nomor Polisi tidak terdaftar.
+                ⛔ Nomor Polisi tidak terdaftar di database Pertamina. Hubungi admin untuk registrasi kendaraan terlebih dahulu.
               </div>
             )}
           </div>
@@ -1268,12 +1294,13 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
         {idxTidakKedap >= 0 && (
           <div style={{ marginTop: 8, padding: 16, borderRadius: 14, background: theme.surface, border: `2px solid ${theme.danger}` }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>Inspeksi Temuan</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>❌ Inspeksi Temuan</div>
             <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
-              Catat setiap temuan dengan keterangannya.
+              Catat setiap temuan dengan keterangannya. Untuk satu temuan boleh tambah beberapa foto dari sudut berbeda,
+              dan bisa tambah temuan lain lewat "Temuan Lainnya" (wajib).
             </div>
             {errors.temuan_foto && (
-              <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}></div>
+              <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 temuan dengan foto wajib diisi.</div>
             )}
             <TemuanList
               temuanList={fotoTemuan}

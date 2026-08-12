@@ -332,9 +332,17 @@ const P1Dashboard = ({ role, onNav, onLogout }) => {
       if (!user) { setLoading(false); return; }
       const { data: profile } = await supabase.from("profiles").select("nama").eq("id", user.id).single();
       setCurrentUser(profile);
+
+      // Ikut ambil relasi inspeksi_p1_temuan(id) — HANYA untuk menghitung
+      // jumlah temuan tiap kendaraan (bukan detail lengkap seperti di
+      // P1TindakLanjut.jsx). Ini dipakai supaya kartu "Perlu tindak" di
+      // Beranda sinkron dengan daftar sebenarnya di layar Tindak Lanjut:
+      // kendaraan yang statusnya belum "selesai" TAPI nol temuan (cek
+      // random tanpa temuan apa pun) memang tidak butuh tindak lanjut,
+      // jadi tidak boleh ikut kehitung di sini.
       const { data } = await supabase
         .from("inspeksi_p1")
-        .select("*")
+        .select("*, inspeksi_p1_temuan(id)")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       setInspeksiAll(data || []);
@@ -393,7 +401,11 @@ const P1Dashboard = ({ role, onNav, onLogout }) => {
     return result;
   }, [inspeksiAll, filterMode, customStart, customEnd, searchQuery]);
 
-  const perluTindak = inspeksiFiltered.filter(i => i.status !== "selesai");
+  // "Perlu tindak" = status belum selesai DAN punya minimal 1 temuan — sama
+  // persis syaratnya dengan filter di P1TindakLanjut.jsx
+  // (i.inspeksi_p1_temuan?.length > 0), supaya angka di kartu Beranda dan
+  // isi daftar di layar Tindak Lanjut selalu cocok.
+  const perluTindak = inspeksiFiltered.filter(i => i.status !== "selesai" && (i.inspeksi_p1_temuan?.length > 0));
   const sudahTindak = inspeksiFiltered.filter(i => i.status === "selesai");
   const displayName = currentUser?.nama || "P1 Officer";
 
