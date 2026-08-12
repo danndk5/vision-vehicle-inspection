@@ -128,12 +128,7 @@ const calcSisaWaktu = (tanggalTarget) => {
   return `${years} Tahun, ${months} Bulan, ${days} Hari`;
 };
 
-// ── Format Nomor Polisi otomatis ────────────────────────────────────────────
-// Membersihkan input (uppercase, buang selain huruf/angka), lalu menyisipkan
-// spasi otomatis di setiap transisi huruf→angka dan angka→huruf, sehingga
-// user cukup mengetik "b1234bbb" dan hasilnya otomatis "B 1234 BBB" — tidak
-// perlu menekan tombol spasi sendiri. Bekerja progresif walau input belum
-// lengkap (misal baru "b1234b" -> "B 1234 B").
+
 const formatNopol = (raw) => {
   const clean = (raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   return clean
@@ -282,11 +277,11 @@ const CameraCaptureSingle = ({ label, onFoto, foto, errorFoto, onPreview, reques
       }}>
         <div style={{ fontSize: 11, color: errorFoto ? theme.danger : theme.textMuted, marginBottom: 8, textAlign: "center" }}>
           {label}
-          <div style={{ marginTop: 2 }}>📷 Kamera belakang · ⏱ Timestamp · 📍 GPS</div>
+          <div style={{ marginTop: 2 }}></div>
         </div>
         {permErr && (
           <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600 }}>
-            ⛔ {permErr}
+             {permErr}
           </div>
         )}
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
@@ -304,7 +299,7 @@ const CameraCaptureSingle = ({ label, onFoto, foto, errorFoto, onPreview, reques
                 ✓ {foto.name}
               </div>
               <div onClick={() => onPreview?.(foto.url)} style={{ cursor: "pointer", fontSize: 12, color: theme.primary, fontWeight: 700, flexShrink: 0 }}>
-                🔍 Lihat
+                Lihat
               </div>
               <div onClick={removeFoto} style={{ cursor: "pointer", fontWeight: 700, color: theme.danger, flexShrink: 0 }}>✕</div>
             </div>
@@ -323,11 +318,6 @@ const CameraCaptureSingle = ({ label, onFoto, foto, errorFoto, onPreview, reques
   );
 };
 
-// ── TemuanFotoGroup — satu "sesi temuan": 1 keterangan + banyak foto (angle) ──
-// Dipakai saat status "Tidak Kedap". Setiap temuan boleh punya beberapa foto
-// (sudut pandang berbeda dari kondisi/kebocoran yang sama) di bawah satu
-// keterangan. Untuk menambah temuan baru (kondisi/lokasi berbeda), gunakan
-// tombol "Temuan Lainnya" di TemuanList.
 const TemuanFotoGroup = ({ index, temuan, onUpdate, onRemove, onPreview, requestAccess, canRemove }) => {
   const [capState, setCapState] = useState("idle");
   const [permErr,  setPermErr]  = useState(null);
@@ -376,7 +366,7 @@ const TemuanFotoGroup = ({ index, temuan, onUpdate, onRemove, onPreview, request
   return (
     <div style={{ marginBottom: 14, padding: 14, borderRadius: 12, background: theme.surfaceAlt, border: `1px solid ${theme.border}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: theme.text }}>📌 Temuan {index + 1}</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: theme.text }}> Temuan {index + 1}</div>
         {canRemove && (
           <div onClick={onRemove} style={{ cursor: "pointer", fontWeight: 700, color: theme.danger, fontSize: 12 }}>✕ Hapus Temuan</div>
         )}
@@ -422,19 +412,19 @@ const TemuanFotoGroup = ({ index, temuan, onUpdate, onRemove, onPreview, request
       )}
 
       {temuan.fotos.length === 0 && (
-        <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 foto wajib diupload untuk temuan ini.</div>
+        <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginBottom: 10 }}></div>
       )}
 
       {permErr && (
         <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600 }}>
-          ⛔ {permErr}
+           {permErr}
         </div>
       )}
       <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
         onChange={handleFileChange} style={{ display: "none" }} />
       <Btn onClick={handleCaptureClick} variant="outline"
         style={{ padding: "8px", fontSize: 12, width: "100%" }} disabled={isWorking}>
-        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto (sudut lain)"}
+        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Tambah Foto "}
       </Btn>
     </div>
   );
@@ -692,22 +682,6 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     </div>
   );
 
-  // Lookup nomor polisi — SELALU dari database admin, tidak ada mode "isi manual".
-  //
-  // FIX BUG (data hilang setelah kembali lalu Lanjut lagi): reset checkpoint &
-  // foto temuan dipindah ke SINI (bukan lagi di handleLanjutKategori). Reset
-  // itu seharusnya cuma terjadi kalau nomor polisi/kendaraan benar-benar
-  // GANTI (kendaraan baru = wajar mulai dari nol), BUKAN setiap kali user
-  // mundur ke step Kategori MT lalu klik Lanjut lagi untuk kendaraan yang
-  // SAMA. Sebelumnya handleLanjutKategori selalu memanggil
-  // initCheckpoints()/setFotoTemuan([]) tanpa syarat setiap kali transisi
-  // kategori → ujikedap terjadi, jadi progres checkpoint & foto yang sudah
-  // diisi (termasuk yang dipulihkan dari draft) ikut terhapus.
-  //
-  // IMPROVEMENT: input nomor polisi sekarang diformat otomatis — huruf
-  // kapital otomatis + spasi otomatis disisipkan di setiap transisi
-  // huruf↔angka, jadi user tinggal ketik "b1234bbb" dan hasilnya langsung
-  // "B 1234 BBB" tanpa perlu menekan spasi sendiri. Lihat formatNopol().
   const handlePolisiChange = useCallback((val) => {
     const formatted = formatNopol(val);
     setKendaraan((p) => ({
@@ -788,7 +762,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
   const handleLanjutKendaraan = () => {
     if (lookupStatus !== "found") {
-      alert("Nomor Polisi tidak terdaftar di database Pertamina. Uji kedap tidak dapat dilanjutkan — hubungi admin untuk registrasi kendaraan terlebih dahulu.");
+      alert("Nomor Polisi tidak terdaftar. Uji kedap tidak dapat dilanjutkan.");
       return;
     }
     if (isExpired(kendaraan.masaBerlakuHeadTruck) || isExpired(kendaraan.masaBerlakuTangki)) {
@@ -798,10 +772,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
     navigateToStep("kategori");
   };
 
-  // Catatan: TIDAK lagi mereset checkpoint/fotoTemuan di sini — lihat
-  // penjelasan di handlePolisiChange. Progres yang sudah diisi (atau
-  // dipulihkan dari draft) tetap aman walau user mundur ke step ini dulu
-  // lalu klik Lanjut lagi untuk kendaraan yang sama.
+
   const handleLanjutKategori = () => {
     if (!kategoriMT) { alert("Pilih kategori MT terlebih dahulu!"); return; }
     navigateToStep("ujikedap");
@@ -970,11 +941,11 @@ const HSEFormScreen = ({ onBack, onNav }) => {
               <div style={{ fontSize: 12, color: theme.textMuted }}>🔍 Mencari data kendaraan...</div>
             )}
             {lookupStatus === "found" && (
-              <div style={{ fontSize: 12, color: theme.success, fontWeight: 600 }}>✅ Data kendaraan ditemukan</div>
+              <div style={{ fontSize: 12, color: theme.success, fontWeight: 600 }}>Data kendaraan ditemukan</div>
             )}
             {lookupStatus === "notfound" && (
               <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600 }}>
-                ⛔ Nomor Polisi tidak terdaftar di database Pertamina. Hubungi admin untuk registrasi kendaraan terlebih dahulu.
+                Nomor Polisi tidak terdaftar.
               </div>
             )}
           </div>
@@ -1042,7 +1013,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
                       background: lulus ? theme.successLight : theme.dangerLight,
                       color: lulus ? theme.success : theme.danger,
                     }}>
-                      {lulus ? "✅ Lulus" : "❌ Tidak Lulus"}
+                      {lulus ? "Lulus" : "Tidak Lulus"}
                     </div>
                   </div>
                 );
@@ -1124,7 +1095,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
             color: statusAkhir === "kedap" ? theme.success : theme.danger,
             fontWeight: 800, fontSize: 15,
           }}>
-            {statusAkhir === "kedap" ? "✅ LULUS UJI KEDAP" : "❌ TIDAK LULUS UJI KEDAP"}
+            {statusAkhir === "kedap" ? "✅ LULUS UJI KEDAP" : "TIDAK LULUS UJI KEDAP"}
           </div>
 
           <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
@@ -1216,7 +1187,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         )}
         {statusAkhir === "tidak_kedap" && (
           <div style={{ marginTop: 10, padding: "6px 14px", borderRadius: 20, background: theme.dangerLight, color: theme.danger, fontWeight: 700, fontSize: 13, display: "inline-block" }}>
-            ❌ TIDAK LULUS — Ditemukan kebocoran
+            TIDAK LULUS — Ditemukan kebocoran
           </div>
         )}
       </div>
@@ -1267,7 +1238,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
                       ? (opt === "kedap" ? theme.success : theme.danger)
                       : theme.border}`,
                   }}>
-                    {opt === "kedap" ? "✅ Kedap" : "❌ Tidak Kedap"}
+                    {opt === "kedap" ? "✅ Kedap" : "Tidak Kedap"}
                   </div>
                 ))}
               </div>
@@ -1285,7 +1256,7 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
               {isTidakKedap && (
                 <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: theme.dangerLight, fontSize: 12, color: theme.danger, fontWeight: 600 }}>
-                  🛑 Uji dihentikan — lanjut ke pencatatan temuan di bawah
+                  Uji dihentikan — lanjut ke pencatatan temuan di bawah
                 </div>
               )}
             </div>
@@ -1294,10 +1265,9 @@ const HSEFormScreen = ({ onBack, onNav }) => {
 
         {idxTidakKedap >= 0 && (
           <div style={{ marginTop: 8, padding: 16, borderRadius: 14, background: theme.surface, border: `2px solid ${theme.danger}` }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>❌ Inspeksi Temuan</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: theme.danger, marginBottom: 4 }}>Inspeksi Temuan</div>
             <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 14 }}>
-              Catat setiap temuan dengan keterangannya. Untuk satu temuan boleh tambah beberapa foto dari sudut berbeda,
-              dan bisa tambah temuan lain lewat "Temuan Lainnya" (wajib).
+              Catat setiap temuan dengan keterangannya.
             </div>
             {errors.temuan_foto && (
               <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 temuan dengan foto wajib diisi.</div>

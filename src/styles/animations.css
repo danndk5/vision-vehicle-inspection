@@ -1,19 +1,81 @@
+/* ============================================================
+   animations.css — keyframes global untuk seluruh aplikasi.
+   Import SEKALI di entry point (main.jsx / index.jsx):
+     import "./styles/animations.css";
+   ============================================================ */
+
+/* Elemen muncul dari bawah sambil fade-in — dipakai untuk konten
+   step form, item list, kartu ringkasan, dll. */
 @keyframes fadeSlideUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Elemen muncul dari atas — cocok untuk banner/notifikasi. */
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade polos, tanpa pergeseran — untuk overlay/backdrop modal. */
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
+/* Muncul dengan sedikit "pop" — cocok untuk stat card, badge, modal. */
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1); }
 }
 
-@keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+/* Slide dari kanan — perpindahan antar screen/step ke arah "maju". */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
+
+/* Slide dari kiri — perpindahan antar screen/step ke arah "mundur". */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Shimmer untuk skeleton loading (pengganti teks "Memuat data..."). */
+@keyframes shimmer {
+  0%   { background-position: -450px 0; }
+  100% { background-position: 450px 0; }
+}
+
+/* Denyut halus — untuk badge status, dot notifikasi, indikator live. */
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* Spinner muter — pengganti teks loading pada tombol submit. */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Getar halus untuk validasi gagal (mis. field wajib belum diisi). */
+@keyframes shakeX {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+/* Checkmark "menggambar" — untuk konfirmasi sukses submit. */
+@keyframes drawCheck {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Utility class siap-pakai (opsional, kalau tidak lewat komponen JS) */
+.anim-fade-slide-up  { animation: fadeSlideUp 320ms cubic-bezier(0.16,1,0.3,1) both; }
+.anim-fade-slide-down{ animation: fadeSlideDown 280ms cubic-bezier(0.16,1,0.3,1) both; }
+.anim-fade-in         { animation: fadeIn 240ms ease both; }
+.anim-scale-in        { animation: scaleIn 260ms cubic-bezier(0.16,1,0.3,1) both; }
+.anim-shake           { animation: shakeX 380ms ease; }

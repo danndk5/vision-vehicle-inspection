@@ -19,6 +19,10 @@ import { useBreakpoint } from "../hooks/useBreakpoint";
 import { DESKTOP_GRID_GAP, SIDEBAR_WIDTH } from "../styles/layout";
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
+// Ditambahkan onTouchStart/onTouchEnd supaya kartu terasa "ditekan" (scale
+// halus) juga di HP — sebelumnya efek hover (translateY) cuma jalan di
+// desktop lewat mouse, jadi di layar sentuh tidak ada feedback apa pun saat
+// kartu diketuk.
 const StatCard = ({ value, label, color, bg, icon, isDesktop, onClick }) => (
   <div onClick={onClick} style={{
     background: bg, borderRadius: 16,
@@ -30,6 +34,8 @@ const StatCard = ({ value, label, color, bg, icon, isDesktop, onClick }) => (
   }}
   onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 10px rgba(0,0,0,0.08)"; } }}
   onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 1px 2px rgba(0,0,0,0.04)"; }}
+  onTouchStart={(e) => { if (onClick) e.currentTarget.style.transform = "scale(0.96)"; }}
+  onTouchEnd={(e) => { e.currentTarget.style.transform = "none"; }}
   >
     <div style={{ fontSize: isDesktop ? 26 : 22, fontWeight: 800, color }}>{value}</div>
     <div style={{ fontSize: isDesktop ? 12 : 10, color, fontWeight: 600, marginTop: 2, opacity: 0.85 }}>
@@ -405,10 +411,12 @@ const TabGPS = ({ onOpenDetail, onOpenKategori, onOpenRiwayat, isDesktop, onCoun
       </div>
       {filteredList.length > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(auto-fill, minmax(300px, 1fr))" : "1fr", gap: isDesktop ? DESKTOP_GRID_GAP : 0 }}>
-          {filteredList.map((item) => (
+          {filteredList.map((item, i) => (
             <Card key={item.id} style={{ 
               marginBottom: isDesktop ? 0 : 10, padding: "14px 16px",
               boxShadow: "0 1px 3px rgba(0,0,0,0.06)", borderRadius: 14,
+              animation: "fadeSlideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both",
+              animationDelay: `${Math.min(i * 40, 400)}ms`,
               }}>
               <div onClick={() => onOpenDetail(item.id)}
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", marginBottom: 10 }}>
@@ -672,13 +680,17 @@ const TabHSE = ({ isDesktop, onOpenDetail, onOpenRiwayat, onCountChange }) => {
 
       {filteredList.length > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(auto-fill, minmax(300px, 1fr))" : "1fr", gap: isDesktop ? DESKTOP_GRID_GAP : 0 }}>
-          {filteredList.map((item) => {
+          {filteredList.map((item, i) => {
             const isLulus = item.status === "lulus";
             return (
               <Card
                 key={item.id}
                 onClick={() => onOpenDetail?.(item.id)}
-                style={{ marginBottom: isDesktop ? 0 : 10, padding: "14px 16px", cursor: "pointer" }}
+                style={{
+                  marginBottom: isDesktop ? 0 : 10, padding: "14px 16px", cursor: "pointer",
+                  animation: "fadeSlideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both",
+                  animationDelay: `${Math.min(i * 40, 400)}ms`,
+                }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -907,14 +919,18 @@ const TabP1 = ({ isDesktop, onOpenDetail, onOpenRiwayat, onCountChange }) => {
       </div>
       {filteredList.length > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(auto-fill, minmax(300px, 1fr))" : "1fr", gap: isDesktop ? DESKTOP_GRID_GAP : 0 }}>
-          {filteredList.map((item) => {
+          {filteredList.map((item, i) => {
             const temuanCount = item.inspeksi_p1_temuan?.length || 0;
             const selesai = isP1Selesai(item);
             return (
               <Card
                 key={item.id}
                 onClick={() => onOpenDetail?.(item.id)}
-                style={{ marginBottom: isDesktop ? 0 : 10, padding: "14px 16px", cursor: "pointer" }}
+                style={{
+                  marginBottom: isDesktop ? 0 : 10, padding: "14px 16px", cursor: "pointer",
+                  animation: "fadeSlideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both",
+                  animationDelay: `${Math.min(i * 40, 400)}ms`,
+                }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: "#EDE9FE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -988,6 +1004,17 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
       <style>{`
         @keyframes skeletonPulse { 0% { opacity: 0.55; } 50% { opacity: 1; } 100% { opacity: 0.55; } }
         .skeleton-pulse { animation: skeletonPulse 1.4s ease-in-out infinite; }
+        /* Elemen muncul dari bawah sambil fade-in — dipakai untuk kartu
+           laporan di ketiga tab (GPS/HSE/P1), muncul bertahap (stagger)
+           lewat animationDelay per index saat data selesai dimuat. */
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Fade polos untuk transisi ganti tab. Karena ketiga tab TETAP
+           mounted (lihat catatan fix di bawah — hanya di-toggle lewat
+           display:none/block, bukan unmount), animasi ini otomatis
+           terpicu ulang tiap kali sebuah tab berpindah dari display:none
+           ke display:block, tanpa perlu remount komponen atau fetch ulang
+           data. */
+        @keyframes fadeInTab { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
       {/* Header */}
       <div style={{
@@ -1070,8 +1097,12 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
           hanya disembunyikan lewat display:none saat tidak aktif. Semua
           fetch data cukup sekali, filter & scroll tetap tersimpan per tab,
           dan badge count/overdue langsung akurat sejak awal buka dashboard —
-          tidak menunggu user membuka tab tersebut dulu. */}
-      <div style={{ display: activeTab === "gps" ? "block" : "none" }}>
+          tidak menunggu user membuka tab tersebut dulu.
+          Animasi fade (fadeInTab) ditambahkan lewat inline style di bawah —
+          aman dipasang di atas fix ini karena hanya memicu lewat perubahan
+          display, TIDAK butuh remount, jadi tidak mengganggu state/data yang
+          sudah dijaga tetap hidup oleh fix di atas. */}
+      <div style={{ display: activeTab === "gps" ? "block" : "none", animation: activeTab === "gps" ? "fadeInTab 260ms ease both" : "none" }}>
         <TabGPS
           onOpenDetail={onOpenDetail}
           onOpenKategori={onOpenKategori}
@@ -1081,7 +1112,7 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
           onOverdueChange={setOverdueCount}
         />
       </div>
-      <div style={{ display: activeTab === "hse" ? "block" : "none" }}>
+      <div style={{ display: activeTab === "hse" ? "block" : "none", animation: activeTab === "hse" ? "fadeInTab 260ms ease both" : "none" }}>
         <TabHSE
           isDesktop={isDesktop}
           onOpenDetail={onOpenDetailHSE}
@@ -1089,7 +1120,7 @@ const PertaminaDashboard = ({ onNav, onLogout, onOpenDetail, onOpenKategori, onO
           onCountChange={(n) => setTabCounts((p) => ({ ...p, hse: n }))}
         />
       </div>
-      <div style={{ display: activeTab === "p1" ? "block" : "none" }}>
+      <div style={{ display: activeTab === "p1" ? "block" : "none", animation: activeTab === "p1" ? "fadeInTab 260ms ease both" : "none" }}>
         <TabP1
           isDesktop={isDesktop}
           onOpenDetail={onOpenDetailP1}
