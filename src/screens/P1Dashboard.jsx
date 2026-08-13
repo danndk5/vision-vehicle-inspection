@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Icon from "../components/Icon";
 import SectionLabel from "../components/SectionLabel";
 import ThemeToggle from "../components/ThemeToggle";
@@ -8,37 +8,6 @@ import { useBackableView, goBack } from "../hooks/useBackableView";
 
 // Lebar tampilan dikunci seukuran HP — akun P1 memang cuma dipakai di ponsel
 const FRAME_WIDTH = 430;
-
-// ── Helper: hitung batas tanggal awal berdasarkan periode filter (sama
-// persis dengan HSEDashboard.jsx / DashboardScreen.jsx supaya perilaku
-// filter konsisten di semua role) ────────────────────────────────────────
-const getRangeStart = (mode) => {
-  const now = new Date();
-
-  if (mode === "minggu") {
-    const day = now.getDay();
-    const diffKeSenin = day === 0 ? 6 : day - 1;
-    const start = new Date(now);
-    start.setDate(now.getDate() - diffKeSenin);
-    start.setHours(0, 0, 0, 0);
-    return start;
-  }
-  if (mode === "bulan") {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-  if (mode === "6bulan") {
-    return new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  }
-  return null; // "semua"
-};
-
-const FILTER_OPTIONS = [
-  { value: "semua",  label: "Semua"        },
-  { value: "minggu", label: "Minggu Ini"   },
-  { value: "bulan",  label: "Bulan Ini"    },
-  { value: "6bulan", label: "6 Bulan Ini"  },
-  { value: "custom", label: "Kustom"       },
-];
 
 // ── Helper: sisa hari sampai tanggal tertentu (negatif = sudah lewat) ─────────
 const sisaHari = (tanggal) => {
@@ -123,94 +92,6 @@ const ExpiryListModal = ({ theme, items, onClose }) => (
         </div>
       ))}
     </div>
-  </div>
-);
-
-// ── FilterBar ──────────────────────────────────────────────────────────────
-const getIsDarkBg = (hex) => {
-  if (!hex || hex[0] !== "#" || hex.length < 7) return false;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.5;
-};
-
-const FilterBar = ({ theme, filterMode, setFilterMode, customStart, setCustomStart, customEnd, setCustomEnd }) => {
-  const isDarkBg = getIsDarkBg(theme.bg);
-  const dateInputStyle = {
-    width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${theme.border}`,
-    background: theme.surfaceAlt || theme.surface, color: theme.text, fontSize: 12, boxSizing: "border-box",
-    fontFamily: "'DM Sans', sans-serif", outline: "none",
-    colorScheme: isDarkBg ? "dark" : "light",
-  };
-
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-        {FILTER_OPTIONS.map((opt) => (
-          <div
-            key={opt.value}
-            onClick={() => setFilterMode(opt.value)}
-            style={{
-              flexShrink: 0, padding: "7px 14px", borderRadius: 20, cursor: "pointer",
-              fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
-              background: filterMode === opt.value ? theme.primary : theme.surface,
-              color: filterMode === opt.value ? "#fff" : theme.textMuted,
-              border: `1.5px solid ${filterMode === opt.value ? theme.primary : theme.border}`,
-            }}
-          >
-            {opt.label}
-          </div>
-        ))}
-      </div>
-
-      {filterMode === "custom" && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>Dari</div>
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              style={dateInputStyle}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>Sampai</div>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              style={dateInputStyle}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ── SearchBar — cari cepat nomor polisi dari beranda ──────────────────────────
-const SearchBar = ({ theme, value, onChange }) => (
-  <div style={{
-    display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12,
-    background: theme.surface, border: `1px solid ${theme.border}`, marginBottom: 20,
-  }}>
-    <Icon name="search" size={16} color={theme.textMuted} />
-    <input
-      type="text"
-      placeholder="Cari nomor polisi..."
-      value={value}
-      onChange={(e) => onChange(e.target.value.toUpperCase())}
-      style={{
-        flex: 1, border: "none", outline: "none", background: "transparent",
-        color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
-      }}
-    />
-    {value && (
-      <div onClick={() => onChange("")} style={{ cursor: "pointer", color: theme.textMuted, fontSize: 14 }}>✕</div>
-    )}
   </div>
 );
 
@@ -301,15 +182,6 @@ const P1Dashboard = ({ role, onNav, onLogout }) => {
   const [loading,     setLoading]     = useState(true);
   const [view,        setView]        = useState("dashboard");
 
-  // Filter periode — mempengaruhi angka & daftar di beranda (sama seperti
-  // HSEDashboard.jsx / DashboardScreen.jsx)
-  const [filterMode,  setFilterMode]  = useState("semua");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd,   setCustomEnd]   = useState("");
-
-  // Cari nomor polisi cepat
-  const [searchQuery, setSearchQuery] = useState("");
-
   // Peringatan masa berlaku Head Truck / Tangki
   const [expiryItems,     setExpiryItems]     = useState([]);
   const [showExpiryModal, setShowExpiryModal] = useState(false);
@@ -374,52 +246,29 @@ const P1Dashboard = ({ role, onNav, onLogout }) => {
     load();
   }, []);
 
-  // Terapkan filter periode + pencarian ke seluruh data (sama seperti HSEDashboard)
-  const inspeksiFiltered = useMemo(() => {
-    let result = inspeksiAll;
-
-    if (filterMode === "custom") {
-      if (customStart || customEnd) {
-        const start = customStart ? new Date(customStart + "T00:00:00") : null;
-        const end   = customEnd   ? new Date(customEnd   + "T23:59:59") : null;
-        result = result.filter((i) => {
-          const t = new Date(i.created_at);
-          if (start && t < start) return false;
-          if (end && t > end) return false;
-          return true;
-        });
-      }
-    } else if (filterMode !== "semua") {
-      const start = getRangeStart(filterMode);
-      result = result.filter((i) => new Date(i.created_at) >= start);
-    }
-
-    if (searchQuery.trim()) {
-      result = result.filter((i) => i.nomor_polisi?.toUpperCase().includes(searchQuery.trim()));
-    }
-
-    return result;
-  }, [inspeksiAll, filterMode, customStart, customEnd, searchQuery]);
+  // Akun P1 fokus pengecekan lapangan — filter periode & pencarian nomor
+  // polisi sengaja tidak ada di sini (fitur semacam itu ditangani penuh di
+  // akun Depot). Beranda P1 selalu menampilkan seluruh data milik user ini.
 
   // "Perlu tindak" = status belum selesai DAN punya minimal 1 temuan — sama
   // persis syaratnya dengan filter di P1TindakLanjut.jsx
   // (i.inspeksi_p1_temuan?.length > 0), supaya angka di kartu Beranda dan
   // isi daftar di layar Tindak Lanjut selalu cocok.
-  const perluTindak = inspeksiFiltered.filter(i => i.status !== "selesai" && (i.inspeksi_p1_temuan?.length > 0));
-  const sudahTindak = inspeksiFiltered.filter(i => i.status === "selesai");
+  const perluTindak = inspeksiAll.filter(i => i.status !== "selesai" && (i.inspeksi_p1_temuan?.length > 0));
+  const sudahTindak = inspeksiAll.filter(i => i.status === "selesai");
   const displayName = currentUser?.nama || "P1 Officer";
 
   // onBack dari tiap sub-view dibungkus goBack() supaya tombol "Kembali" di layar
   // dan tombol kembali fisik HP sama-sama lewat window.history.back() — history
   // stack jadi konsisten, tidak ada state "nyangkut" dari pushState di useBackableView.
-  if (view === "all")     return <KendaraanList title="Total Diperiksa"       items={inspeksiFiltered} onBack={() => goBack(() => setView("dashboard"))} theme={theme} />;
-  if (view === "perlu")   return <KendaraanList title="Perlu Ditindaklanjuti" items={perluTindak}      onBack={() => goBack(() => setView("dashboard"))} theme={theme} />;
-  if (view === "selesai") return <KendaraanList title="Sudah Ditindaklanjuti" items={sudahTindak}      onBack={() => goBack(() => setView("dashboard"))} theme={theme} />;
+  if (view === "all")     return <KendaraanList title="Total Diperiksa"       items={inspeksiAll} onBack={() => goBack(() => setView("dashboard"))} theme={theme} />;
+  if (view === "perlu")   return <KendaraanList title="Perlu Ditindaklanjuti" items={perluTindak} onBack={() => goBack(() => setView("dashboard"))} theme={theme} />;
+  if (view === "selesai") return <KendaraanList title="Sudah Ditindaklanjuti" items={sudahTindak} onBack={() => goBack(() => setView("dashboard"))} theme={theme} />;
 
   const STATS = [
-    { val: inspeksiFiltered.length, label: "Total",        view: "all",     bg: theme.primaryLight, text: theme.primary },
-    { val: perluTindak.length,      label: "Perlu tindak", view: "perlu",   bg: theme.dangerLight,   text: theme.danger  },
-    { val: sudahTindak.length,      label: "Selesai",      view: "selesai", bg: theme.successLight,  text: theme.success },
+    { val: inspeksiAll.length, label: "Total",        view: "all",     bg: theme.primaryLight, text: theme.primary },
+    { val: perluTindak.length, label: "Perlu tindak", view: "perlu",   bg: theme.dangerLight,   text: theme.danger  },
+    { val: sudahTindak.length, label: "Selesai",      view: "selesai", bg: theme.successLight,  text: theme.success },
   ];
 
   return (
@@ -454,20 +303,6 @@ const P1Dashboard = ({ role, onNav, onLogout }) => {
             {/* Peringatan masa berlaku */}
             <ExpiryBanner theme={theme} items={expiryItems} onClick={() => setShowExpiryModal(true)} />
 
-            {/* Cari nomor polisi */}
-            <SearchBar theme={theme} value={searchQuery} onChange={setSearchQuery} />
-
-            <SectionLabel>Filter Periode</SectionLabel>
-            <FilterBar
-              theme={theme}
-              filterMode={filterMode}
-              setFilterMode={setFilterMode}
-              customStart={customStart}
-              setCustomStart={setCustomStart}
-              customEnd={customEnd}
-              setCustomEnd={setCustomEnd}
-            />
-
             {/* Ringkasan angka — klik salah satu card untuk lihat daftar
                 lengkap per kategori (Total / Perlu tindak / Selesai) */}
             <SectionLabel>Ringkasan Cek Random</SectionLabel>
@@ -489,7 +324,6 @@ const P1Dashboard = ({ role, onNav, onLogout }) => {
               fontSize: 13, color: theme.textMuted, lineHeight: 1.6,
             }}>
               <div style={{ fontWeight: 700, color: theme.text, marginBottom: 4 }}>💡 Panduan</div>
-              <div>• Gunakan filter periode untuk melihat data per minggu/bulan/6 bulan/kustom</div>
               <div>• Klik angka untuk lihat daftar kendaraan</div>
               <div>• Gunakan <b>Pengecekan</b> untuk cek random baru</div>
               <div>• Gunakan <b>Tindak Lanjut</b> untuk tangani temuan</div>

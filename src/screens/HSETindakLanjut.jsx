@@ -137,11 +137,14 @@ const PhotoLightbox = ({ url, onClose }) => {
   );
 };
 
-// ── RepairPhotoSlot — 1 foto bukti perbaikan + keterangan sendiri,
-//    dipasangkan dengan 1 foto temuan. requestAccess() sudah di-warm-up dari
-//    TindakLanjutDetail sejak layar ini dibuka, jadi tiap foto (temuan 1, 2, 3...)
-//    terasa instan — sama seperti foto Kedap di HSEFormScreen. ─────────────────
-const RepairPhotoSlot = ({ label, kategori, foto, onFoto, keterangan, onKeterangan, onPreview, errorFoto, errorKet, requestAccess }) => {
+// ── RepairPhotoGroup — foto bukti perbaikan untuk SATU temuan, boleh BANYAK
+//    foto (angle berbeda), dipasangkan dengan 1 keterangan perbaikan untuk
+//    grup itu. Pola ini sengaja dibuat sama seperti TemuanFotoGroup di
+//    HSEFormScreen.jsx (1 keterangan + banyak foto) supaya konsisten dan
+//    mudah dikenali developer lain. requestAccess() sudah di-warm-up dari
+//    TindakLanjutDetail sejak layar ini dibuka, jadi tiap foto (angle 1, 2,
+//    3...) terasa instan. ──────────────────────────────────────────────────
+const RepairPhotoGroup = ({ index, fotos, keterangan, onFotos, onKeterangan, onPreview, errorFoto, errorKet, requestAccess, kategoriPrefix }) => {
   const [capState, setCapState] = useState("idle");
   const [permErr,  setPermErr]  = useState(null);
   const fileInputRef = useRef(null);
@@ -165,8 +168,8 @@ const RepairPhotoSlot = ({ label, kategori, foto, onFoto, keterangan, onKeterang
     if (!file) return;
     setCapState("processing");
     try {
-      const result = await uploadFoto(file, kategori, cachedPosRef.current);
-      onFoto(result);
+      const result = await uploadFoto(file, `${kategoriPrefix}-${Date.now()}`, cachedPosRef.current);
+      onFotos([...fotos, result]);
     } catch (err) {
       alert("⚠️ " + err.message);
     } finally {
@@ -176,9 +179,10 @@ const RepairPhotoSlot = ({ label, kategori, foto, onFoto, keterangan, onKeterang
     }
   };
 
-  const removeFoto = async () => {
+  const removeFoto = async (fIdx) => {
+    const foto = fotos[fIdx];
     if (foto?.path) await supabase.storage.from("foto-inspeksi").remove([foto.path]).catch(() => {});
-    onFoto(null);
+    onFotos(fotos.filter((_, i) => i !== fIdx));
   };
 
   const isWorking = capState !== "idle";
@@ -189,74 +193,82 @@ const RepairPhotoSlot = ({ label, kategori, foto, onFoto, keterangan, onKeterang
       background: errorFoto ? theme.dangerLight : "transparent", marginTop: 8,
     }}>
       <div style={{ fontSize: 11, color: errorFoto ? theme.danger : theme.textMuted, marginBottom: 8, textAlign: "center" }}>
-        {label}
+        Foto Bukti Perbaikan — Temuan {index + 1} (boleh lebih dari 1 angle)
         <div style={{ marginTop: 2 }}>📷 Kamera belakang · ⏱ Timestamp · 📍 GPS</div>
       </div>
+
       {permErr && (
         <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600 }}>
           ⛔ {permErr}
         </div>
       )}
-      <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
-        onChange={handleFileChange} style={{ display: "none" }} />
-      {foto ? (
-        <>
-          <div style={{ padding: "8px 10px", background: theme.primaryLight, borderRadius: 8, marginBottom: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+
+      {fotos.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {fotos.map((foto, fIdx) => (
+            <div key={foto.path || fIdx} style={{ position: "relative" }}>
               <img
                 src={foto.url}
                 alt={foto.name}
                 onClick={() => onPreview?.(foto.url)}
-                style={{ width: 46, height: 46, borderRadius: 6, objectFit: "cover", cursor: "pointer", border: `1px solid ${theme.primary}`, flexShrink: 0 }}
+                style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", cursor: "pointer", border: `1px solid ${theme.primary}` }}
               />
-              <div style={{ flex: 1, fontSize: 12, color: theme.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                ✓ {foto.name}
-              </div>
-              <div onClick={() => onPreview?.(foto.url)} style={{ cursor: "pointer", fontSize: 12, color: theme.primary, fontWeight: 700, flexShrink: 0 }}>
-                🔍 Lihat
-              </div>
-              <div onClick={removeFoto} style={{ cursor: "pointer", fontWeight: 700, color: theme.danger, flexShrink: 0 }}>✕</div>
+              <div
+                onClick={() => removeFoto(fIdx)}
+                style={{
+                  position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
+                  background: theme.danger, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, cursor: "pointer", lineHeight: 1,
+                }}
+              >✕</div>
             </div>
-          </div>
-
-          {/* Keterangan khusus untuk foto perbaikan ini (bukan satu keterangan untuk semua) */}
-          <textarea
-            placeholder="Keterangan perbaikan untuk foto ini (wajib)..."
-            value={keterangan}
-            onChange={(e) => onKeterangan(e.target.value)}
-            style={{
-              width: "100%", padding: "8px 10px", borderRadius: 8,
-              border: `1.5px solid ${errorKet ? theme.danger : theme.border}`,
-              background: errorKet ? theme.dangerLight : theme.surface,
-              color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
-              resize: "none", minHeight: 60, boxSizing: "border-box", outline: "none",
-            }}
-          />
-          {errorKet && (
-            <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginTop: 3 }}>⚠️ Keterangan foto ini wajib diisi.</div>
-          )}
-        </>
-      ) : (
-        <Btn onClick={handleCaptureClick} variant="outline"
-          style={{ fontSize: 12, padding: "8px 12px", width: "100%" }} disabled={isWorking}>
-          {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : "📷 Foto Bukti Perbaikan"}
-        </Btn>
+          ))}
+        </div>
       )}
-      {errorFoto && (
-        <div style={{ marginTop: 6, fontSize: 11, color: theme.danger, fontWeight: 600 }}>⚠️ Foto bukti perbaikan wajib diambil.</div>
+
+      {fotos.length === 0 && (
+        <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginBottom: 10 }}>⚠️ Minimal 1 foto bukti perbaikan wajib diupload.</div>
+      )}
+
+      <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+        onChange={handleFileChange} style={{ display: "none" }} />
+      <Btn onClick={handleCaptureClick} variant="outline"
+        style={{ fontSize: 12, padding: "8px 12px", width: "100%", marginBottom: 10 }} disabled={isWorking}>
+        {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : fotos.length === 0 ? "📷 Foto Bukti Perbaikan" : "📷 Tambah Foto (Angle Lain)"}
+      </Btn>
+
+      <textarea
+        placeholder="Keterangan perbaikan untuk temuan ini (wajib)..."
+        value={keterangan}
+        onChange={(e) => onKeterangan(e.target.value)}
+        style={{
+          width: "100%", padding: "8px 10px", borderRadius: 8,
+          border: `1.5px solid ${errorKet ? theme.danger : theme.border}`,
+          background: errorKet ? theme.dangerLight : theme.surface,
+          color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+          resize: "none", minHeight: 60, boxSizing: "border-box", outline: "none",
+        }}
+      />
+      {errorKet && (
+        <div style={{ fontSize: 11, color: theme.danger, fontWeight: 600, marginTop: 3 }}>⚠️ Keterangan perbaikan wajib diisi.</div>
       )}
     </div>
   );
 };
 
 // ── TindakLanjutDetail HSE ────────────────────────────────────────────────────
-// Tindak lanjut per KENDARAAN. Setiap foto temuan WAJIB dipasangkan 1 foto bukti
-// perbaikan LENGKAP DENGAN keterangannya sendiri (bukan satu keterangan di akhir).
-// Alur sekarang 2 step (sama pola dengan HSEFormScreen): "form" → isi bukti
-// perbaikan, lalu "ringkasan" → tinjau ulang semua sebelum benar-benar dikirim.
+// Tindak lanjut per KENDARAAN. `fotoTemuan` di sini adalah array TERKELOMPOK
+// per temuan_index — { temuan_index, keterangan, fotos: [...] } — persis
+// seperti pengelompokan aslinya di form Pengecekan (HSEFormScreen.jsx), bukan
+// 1 baris = 1 temuan lagi. Setiap grup temuan WAJIB dipasangkan minimal 1
+// foto bukti perbaikan (boleh banyak foto/angle) + 1 keterangan perbaikan.
+// Alur tetap 2 step: "form" → isi bukti perbaikan, lalu "ringkasan" → tinjau
+// ulang semua sebelum benar-benar dikirim.
 const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
   const [step, setStep] = useState("form"); // "form" | "ringkasan"
-  const [buktiPerbaikan, setBuktiPerbaikan] = useState(() => fotoTemuan.map(() => null));
+  // buktiPerbaikan: array of array — buktiPerbaikan[i] = daftar foto (angle
+  // berbeda) untuk grup temuan ke-i.
+  const [buktiPerbaikan, setBuktiPerbaikan] = useState(() => fotoTemuan.map(() => []));
   const [ketPerbaikan,   setKetPerbaikan]   = useState(() => fotoTemuan.map(() => ""));
   const [previewUrl,     setPreviewUrl]     = useState(null);
   const [errors,         setErrors]         = useState({});
@@ -280,7 +292,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
     return () => coolDown();
   }, [warmUp, coolDown]);
 
-  // Pulihkan draft (foto + keterangan per foto) kalau app sempat ke-close
+  // Pulihkan draft (foto + keterangan per grup temuan) kalau app sempat ke-close
   useEffect(() => {
     const draft = loadDraft(inspeksi.id);
     if (draft) {
@@ -301,14 +313,14 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
     saveDraft(inspeksi.id, { buktiPerbaikan, ketPerbaikan });
   }, [ready, buktiPerbaikan, ketPerbaikan, inspeksi.id]);
 
-  const setFotoAt = (idx) => (foto) => {
-    setBuktiPerbaikan((prev) => prev.map((f, i) => i === idx ? foto : f));
+  const setFotosAt = (idx) => (fotos) => {
+    setBuktiPerbaikan((prev) => prev.map((f, i) => i === idx ? fotos : f));
   };
   const setKetAt = (idx) => (val) => {
     setKetPerbaikan((prev) => prev.map((k, i) => i === idx ? val : k));
   };
 
-  const jumlahLengkap = buktiPerbaikan.filter(Boolean).length;
+  const jumlahLengkap = buktiPerbaikan.filter((fotos) => fotos.length > 0).length;
   const semuaLengkap  = fotoTemuan.length > 0
     && jumlahLengkap === fotoTemuan.length
     && ketPerbaikan.every((k) => k.trim());
@@ -316,8 +328,8 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
   // Validasi lalu masuk ke layar Ringkasan — belum benar-benar kirim di sini.
   const handleTinjau = () => {
     const e = {};
-    buktiPerbaikan.forEach((f, i) => {
-      if (!f) e[`bukti_${i}`] = true;
+    buktiPerbaikan.forEach((fotos, i) => {
+      if (!fotos || fotos.length === 0) e[`bukti_${i}`] = true;
       if (!ketPerbaikan[i]?.trim()) e[`ket_${i}`] = true;
     });
     setErrors(e);
@@ -335,7 +347,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
       const { data: { user } } = await supabase.auth.getUser();
 
       // Catatan gabungan (untuk kolom "catatan" di tindaklanjut_hse) dirangkai
-      // dari keterangan tiap foto, supaya riwayat tetap tersimpan ringkas.
+      // dari keterangan tiap grup temuan, supaya riwayat tetap tersimpan ringkas.
       const catatanGabungan = ketPerbaikan
         .map((k, i) => `Temuan ${i + 1}: ${k.trim()}`)
         .join("\n");
@@ -348,13 +360,21 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
       }]);
       if (tlErr) throw tlErr;
 
-      const { error: fotoErr } = await supabase.from("foto_inspeksi_hse").insert(
-        buktiPerbaikan.map((f, i) => ({
+      // Setiap grup temuan bisa punya beberapa foto bukti perbaikan (angle
+      // berbeda) — diratakan jadi satu baris per foto, dengan `temuan_index`
+      // yang sama dengan grup temuan asalnya supaya nanti tetap bisa
+      // dikelompokkan lagi kalau riwayat ini dibuka ulang, dan `jenis:
+      // "perbaikan"` supaya tidak tercampur dengan foto temuan asli.
+      const fotoRows = buktiPerbaikan.flatMap((fotos, idx) =>
+        fotos.map((f) => ({
           inspeksi_hse_id: inspeksi.id,
           url:             f.url,
-          keterangan:      `Bukti perbaikan temuan ${i + 1}: ${ketPerbaikan[i].trim()}`,
+          keterangan:      `Bukti perbaikan temuan ${idx + 1}: ${ketPerbaikan[idx].trim()}`,
+          temuan_index:    idx,
+          jenis:           "perbaikan",
         }))
       );
+      const { error: fotoErr } = await supabase.from("foto_inspeksi_hse").insert(fotoRows);
       if (fotoErr) throw fotoErr;
 
       await supabase.from("inspeksi_hse").update({ status: "selesai" }).eq("id", inspeksi.id);
@@ -393,30 +413,40 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
           </div>
 
           <SectionLabel>Detail Perbaikan</SectionLabel>
-          {fotoTemuan.map((f, idx) => (
-            <div key={f.id} style={{
+          {fotoTemuan.map((t, idx) => (
+            <div key={t.temuan_index} style={{
               marginBottom: 14, padding: 12, borderRadius: 12,
               background: theme.surface, border: `1px solid ${theme.border}`,
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>
-                Temuan {idx + 1}
+                Temuan {idx + 1} <span style={{ fontWeight: 400, color: theme.textMuted }}>({t.fotos.length} foto temuan · {buktiPerbaikan[idx].length} foto perbaikan)</span>
               </div>
+
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 10, color: theme.danger, marginBottom: 4, fontWeight: 700 }}>SEBELUM</div>
-                  <img
-                    src={f.url} alt="temuan" onClick={() => setPreviewUrl(f.url)}
-                    style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
-                  />
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {t.fotos.map((f, fIdx) => (
+                      <img
+                        key={f.id || fIdx} src={f.url} alt="temuan" onClick={() => setPreviewUrl(f.url)}
+                        style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
+                      />
+                    ))}
+                  </div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 10, color: theme.success, marginBottom: 4, fontWeight: 700 }}>SESUDAH</div>
-                  <img
-                    src={buktiPerbaikan[idx]?.url} alt="perbaikan" onClick={() => setPreviewUrl(buktiPerbaikan[idx]?.url)}
-                    style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
-                  />
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {buktiPerbaikan[idx].map((f, fIdx) => (
+                      <img
+                        key={f.path || fIdx} src={f.url} alt="perbaikan" onClick={() => setPreviewUrl(f.url)}
+                        style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
+
               <div style={{ fontSize: 12, color: theme.textSub, background: theme.surfaceAlt, padding: "8px 10px", borderRadius: 8, marginTop: 8 }}>
                 {ketPerbaikan[idx]}
               </div>
@@ -442,7 +472,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
     );
   }
 
-  // ── STEP FORM — isi bukti perbaikan tiap temuan ────────────────────────────
+  // ── STEP FORM — isi bukti perbaikan tiap grup temuan ───────────────────────
   return (
     <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
       {/* Header */}
@@ -463,7 +493,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
           {" · "}{new Date(inspeksi.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
         </div>
 
-        <SectionLabel>Temuan Uji Kedap ({fotoTemuan.length} foto) — Bukti Perbaikan ({jumlahLengkap}/{fotoTemuan.length})</SectionLabel>
+        <SectionLabel>Temuan Uji Kedap ({fotoTemuan.length} temuan) — Bukti Perbaikan ({jumlahLengkap}/{fotoTemuan.length})</SectionLabel>
 
         {fotoTemuan.length === 0 ? (
           <Card style={{ padding: 20, textAlign: "center", marginBottom: 20 }}>
@@ -471,36 +501,47 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
           </Card>
         ) : (
           <div style={{ marginBottom: 20 }}>
-            {fotoTemuan.map((f, idx) => (
-              <div key={f.id} style={{
+            {fotoTemuan.map((t, idx) => (
+              <div key={t.temuan_index} style={{
                 marginBottom: 14, padding: 12, borderRadius: 12,
                 background: theme.surface, border: `1.5px solid ${theme.danger}`,
               }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: theme.danger, marginBottom: 8 }}>
-                  Temuan {idx + 1}
-                </div>
-                <img
-                  src={f.url}
-                  alt="temuan"
-                  onClick={() => setPreviewUrl(f.url)}
-                  style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 8, marginBottom: 8, cursor: "pointer" }}
-                />
-                <div style={{ fontSize: 12, color: theme.textSub, background: theme.surfaceAlt, padding: "8px 10px", borderRadius: 8, fontStyle: "italic", marginBottom: 4 }}>
-                  Temuan: "{f.keterangan}"
+                  📌 Temuan {idx + 1} <span style={{ fontWeight: 400 }}>({t.fotos.length} foto dokumentasi)</span>
                 </div>
 
-                {/* Foto bukti perbaikan + keterangan sendiri — wajib, dipasangkan dengan temuan ini */}
-                <RepairPhotoSlot
-                  label={`Foto bukti perbaikan untuk Temuan ${idx + 1} (wajib)`}
-                  kategori={`${inspeksi.nomor_polisi}_${idx}`}
-                  foto={buktiPerbaikan[idx]}
-                  onFoto={setFotoAt(idx)}
+                {/* Semua foto dokumentasi temuan ini (angle-angle dari kondisi
+                    yang sama, sesuai yang diambil di form Pengecekan) — bukan
+                    dipecah jadi kartu terpisah lagi. */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                  {t.fotos.map((f, fIdx) => (
+                    <img
+                      key={f.id || fIdx}
+                      src={f.url}
+                      alt="temuan"
+                      onClick={() => setPreviewUrl(f.url)}
+                      style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
+                    />
+                  ))}
+                </div>
+
+                <div style={{ fontSize: 12, color: theme.textSub, background: theme.surfaceAlt, padding: "8px 10px", borderRadius: 8, fontStyle: "italic", marginBottom: 4 }}>
+                  Temuan: "{t.keterangan}"
+                </div>
+
+                {/* Foto bukti perbaikan (boleh banyak angle) + keterangan
+                    sendiri — wajib, dipasangkan dengan grup temuan ini */}
+                <RepairPhotoGroup
+                  index={idx}
+                  fotos={buktiPerbaikan[idx]}
                   keterangan={ketPerbaikan[idx]}
+                  onFotos={setFotosAt(idx)}
                   onKeterangan={setKetAt(idx)}
                   onPreview={setPreviewUrl}
                   errorFoto={!!errors[`bukti_${idx}`]}
                   errorKet={!!errors[`ket_${idx}`]}
                   requestAccess={requestAccess}
+                  kategoriPrefix={`${inspeksi.nomor_polisi}_${idx}`}
                 />
               </div>
             ))}
@@ -514,7 +555,7 @@ const TindakLanjutDetail = ({ inspeksi, fotoTemuan, onBack, onSelesai }) => {
         background: theme.surface, borderTop: `1px solid ${theme.border}`,
       }}>
         <Btn onClick={handleTinjau} variant="primary" icon="check" disabled={submitting || !semuaLengkap}>
-          Tinjau & Kirim ({jumlahLengkap}/{fotoTemuan.length} foto) →
+          Tinjau & Kirim ({jumlahLengkap}/{fotoTemuan.length} temuan) →
         </Btn>
       </div>
 
@@ -590,15 +631,37 @@ const HSETindakLanjut = ({ onBack, onNav }) => {
   }, []);
 
   const handlePilih = async (insp) => {
-    const { data: fotoData } = await supabase
+    // Ambil hanya foto TEMUAN asli (jenis = "temuan") — foto bukti perbaikan
+    // (jenis = "perbaikan") tidak ikut, karena itu ditambahkan belakangan di
+    // layar ini sendiri.
+    const { data: fotoData, error } = await supabase
       .from("foto_inspeksi_hse")
       .select("*")
       .eq("inspeksi_hse_id", insp.id)
-      .not("keterangan", "like", "Bukti perbaikan%")
+      .eq("jenis", "temuan")
+      .order("temuan_index", { ascending: true })
       .order("created_at", { ascending: true });
 
+    if (error) console.error("Error load foto_inspeksi_hse:", error);
+
+    // Kelompokkan ulang foto per temuan_index — supaya beberapa foto (angle
+    // berbeda) yang diambil untuk SATU temuan yang sama saat Pengecekan tetap
+    // tergabung jadi satu kartu "Temuan", persis seperti aslinya di
+    // HSEFormScreen.jsx — bukan terpecah jadi satu temuan per foto.
+    const groups = [];
+    (fotoData || []).forEach((f) => {
+      const idx = f.temuan_index ?? 0;
+      let group = groups.find((g) => g.temuan_index === idx);
+      if (!group) {
+        group = { temuan_index: idx, keterangan: f.keterangan, fotos: [] };
+        groups.push(group);
+      }
+      group.fotos.push(f);
+    });
+    groups.sort((a, b) => a.temuan_index - b.temuan_index);
+
     setSelected(insp);
-    setFotoTemuan(fotoData || []);
+    setFotoTemuan(groups);
     setView("detail");
   };
 

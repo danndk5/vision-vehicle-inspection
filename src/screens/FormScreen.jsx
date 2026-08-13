@@ -37,6 +37,25 @@ const initGps  = () => ({ status: "", segel: { status: "", ket: "" }, kabel: { s
 const STEP_ORDER = [1, 2, 3, "ringkasan"];
 const stepIndex = (s) => STEP_ORDER.indexOf(s);
 
+// ── Animasi ───────────────────────────────────────────────────────────────
+// Keyframes ringan (murni CSS transform/opacity) untuk transisi antar step,
+// banner masuk/keluar, foto tersimpan muncul stagger, dan spinner tombol.
+const ANIM_STYLES = `
+  @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeSlideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+`;
+
+// Spinner kecil pengganti teks polos "Memproses..."/"Mengirim..." — dipakai
+// di dalam tombol (warna ikut warna teks tombol lewat currentColor).
+const Spinner = ({ size = 13 }) => (
+  <span style={{
+    display: "inline-block", width: size, height: size, marginRight: 6,
+    border: "2px solid currentColor", borderRightColor: "transparent", borderTopColor: "transparent",
+    borderRadius: "50%", animation: "spin 0.7s linear infinite", verticalAlign: "middle", opacity: 0.85,
+  }} />
+);
+
 // ── Helpers timestamp & GPS ───────────────────────────────────────────────────
 const decimalToDMS = (decimal, posDir, negDir) => {
   const dir = decimal >= 0 ? posDir : negDir;
@@ -205,6 +224,7 @@ const PhotoLightbox = ({ url, onClose }) => {
       style={{
         position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999,
         display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        animation: "fadeSlideDown 200ms ease both",
       }}
     >
       <img
@@ -272,21 +292,26 @@ const CameraCapture = ({ label, kategori, onPhotos, allPhotos, errorFoto, onPrev
           {label}
           <div style={{ fontSize: 11, marginTop: 2 }}>📷 Kamera belakang · ⏱ Timestamp server · 📍 GPS</div>
         </div>
-        {permErr && <div style={{ marginBottom: 10, padding: "8px 12px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600 }}>⛔ {permErr}</div>}
+        {permErr && <div style={{ marginBottom: 10, padding: "8px 12px", borderRadius: 8, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 600, animation: "fadeSlideDown 220ms ease both" }}>⛔ {permErr}</div>}
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} style={{ display: "none" }} />
         {!reachedLimit ? (
           <Btn onClick={handleCaptureClick} variant="outline" style={{ padding: "9px", fontSize: 13, width: "100%" }} disabled={isWorking}>
-            {capState === "checking" ? "🔐 Cek izin..." : capState === "processing" ? "⏳ Memproses..." : photos.length > 0 ? "📷 Tambah Foto Lagi" : "📷 Ambil Foto"}
+            {isWorking && <Spinner />}
+            {capState === "checking" ? "Cek izin..." : capState === "processing" ? "Memproses..." : photos.length > 0 ? "📷 Tambah Foto Lagi" : "📷 Ambil Foto"}
           </Btn>
         ) : (
-          <div style={{ textAlign: "center", fontSize: 12, color: theme.textMuted, padding: "6px 0", fontWeight: 600 }}>
+          <div style={{ textAlign: "center", fontSize: 12, color: theme.textMuted, padding: "6px 0", fontWeight: 600, animation: "fadeSlideDown 220ms ease both" }}>
             ✓ {photos.length} foto sudah cukup
           </div>
         )}
         {photos.length > 0 && (
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-            {photos.map((p) => (
-              <div key={p.path} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", background: theme.primaryLight, borderRadius: 8 }}>
+            {photos.map((p, i) => (
+              <div key={p.path} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", background: theme.primaryLight, borderRadius: 8,
+                animation: "fadeSlideUp 260ms cubic-bezier(0.16, 1, 0.3, 1) both",
+                animationDelay: `${Math.min(i * 50, 300)}ms`,
+              }}>
                 <img
                   src={p.url}
                   alt={p.name}
@@ -303,7 +328,7 @@ const CameraCapture = ({ label, kategori, onPhotos, allPhotos, errorFoto, onPrev
           </div>
         )}
       </div>
-      {errorFoto && <div style={{ marginTop: 6, fontSize: 12, color: theme.danger, fontWeight: 600 }}>⚠️ Foto dokumentasi wajib diambil.</div>}
+      {errorFoto && <div style={{ marginTop: 6, fontSize: 12, color: theme.danger, fontWeight: 600, animation: "fadeSlideDown 220ms ease both" }}>⚠️ Foto dokumentasi wajib diambil.</div>}
     </div>
   );
 };
@@ -517,6 +542,7 @@ const FormScreen = ({ onBack, onNav }) => {
       margin: "0 0 16px", padding: "10px 14px", borderRadius: 10,
       background: "#FEF3C7", color: "#92400E", fontSize: 12, fontWeight: 600,
       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+      animation: "fadeSlideDown 280ms cubic-bezier(0.16, 1, 0.3, 1) both",
     }}>
       <span>♻️ Data pengisian sebelumnya berhasil dipulihkan.</span>
       <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
@@ -540,6 +566,7 @@ const FormScreen = ({ onBack, onNav }) => {
       margin: "0 0 16px", padding: "10px 14px", borderRadius: 10,
       background: theme.surfaceAlt, color: theme.textMuted, fontSize: 12, fontWeight: 600,
       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+      animation: "fadeSlideDown 280ms cubic-bezier(0.16, 1, 0.3, 1) both",
     }}>
       <span>🗑️ Draft pengisian sebelumnya (lebih dari 6 jam) sudah dihapus otomatis.</span>
       <span onClick={() => setDraftExpiredNotice(false)} style={{ cursor: "pointer" }}>✕</span>
@@ -758,6 +785,7 @@ const FormScreen = ({ onBack, onNav }) => {
   if (step === "ringkasan") {
     return (
       <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
+        <style>{ANIM_STYLES}</style>
         <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
           <div onClick={() => window.history.back()} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
             <Icon name="arrow" size={16} color={theme.textSub} /> Kembali & Edit
@@ -773,12 +801,13 @@ const FormScreen = ({ onBack, onNav }) => {
             background: overallNormal ? "#D1FAE5" : theme.dangerLight,
             color: overallNormal ? theme.success : theme.danger,
             fontWeight: 800, fontSize: 15,
+            animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both",
           }}>
             {overallNormal ? "✅ SEMUA KONDISI NORMAL" : "⚠️ ADA KONDISI ABNORMAL"}
           </div>
 
           {/* Data kendaraan */}
-          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both", animationDelay: "40ms" }}>
             <SectionLabel>Data Kendaraan</SectionLabel>
             <InfoRow label="Nomor Polisi" value={polisi} />
             <InfoRow label="Transportir" value={kendaraanData?.transportir} />
@@ -789,7 +818,7 @@ const FormScreen = ({ onBack, onNav }) => {
           </div>
 
           {/* Ringkasan GPS */}
-          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both", animationDelay: "80ms" }}>
             <SectionLabel>Kondisi GPS</SectionLabel>
             <RingkasanItemRow label="Status GPS" status={gps.status} kategori="gps_status" allPhotos={photos} onPreview={setPreviewUrl} isAktifToggle />
             <RingkasanItemRow label="Segel GPS" status={gps.segel.status} ket={gps.segel.ket} kategori="gps_segel" allPhotos={photos} onPreview={setPreviewUrl} />
@@ -797,28 +826,28 @@ const FormScreen = ({ onBack, onNav }) => {
           </div>
 
           {/* Ringkasan CCTV */}
-          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both", animationDelay: "120ms" }}>
             <SectionLabel>CCTV Dashcam</SectionLabel>
             <RingkasanItemRow label="Status CCTV Dashcam" status={cctv.dashcam.status} kategori="cctv_dashcam_status" allPhotos={photos} onPreview={setPreviewUrl} isAktifToggle />
             <RingkasanItemRow label="Segel Bricket" status={cctv.dashcam.segel_bricket} ket={cctv.dashcam.ket_bricket} kategori="cctv_dashcam_bricket" allPhotos={photos} onPreview={setPreviewUrl} />
             <RingkasanItemRow label="Segel Sambungan Kabel" status={cctv.dashcam.segel_kabel} ket={cctv.dashcam.ket_kabel} kategori="cctv_dashcam_kabel" allPhotos={photos} onPreview={setPreviewUrl} />
           </div>
 
-          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both", animationDelay: "160ms" }}>
             <SectionLabel>CCTV Kanan</SectionLabel>
             <RingkasanItemRow label="Status CCTV Kanan" status={cctv.kanan.status} kategori="cctv_kanan_status" allPhotos={photos} onPreview={setPreviewUrl} isAktifToggle />
             <RingkasanItemRow label="Segel Bricket" status={cctv.kanan.segel_bricket} ket={cctv.kanan.ket_bricket} kategori="cctv_kanan_bricket" allPhotos={photos} onPreview={setPreviewUrl} />
             <RingkasanItemRow label="Segel Sambungan Kabel" status={cctv.kanan.segel_kabel} ket={cctv.kanan.ket_kabel} kategori="cctv_kanan_kabel" allPhotos={photos} onPreview={setPreviewUrl} />
           </div>
 
-          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both", animationDelay: "200ms" }}>
             <SectionLabel>CCTV Kiri</SectionLabel>
             <RingkasanItemRow label="Status CCTV Kiri" status={cctv.kiri.status} kategori="cctv_kiri_status" allPhotos={photos} onPreview={setPreviewUrl} isAktifToggle />
             <RingkasanItemRow label="Segel Bricket" status={cctv.kiri.segel_bricket} ket={cctv.kiri.ket_bricket} kategori="cctv_kiri_bricket" allPhotos={photos} onPreview={setPreviewUrl} />
             <RingkasanItemRow label="Segel Sambungan Kabel" status={cctv.kiri.segel_kabel} ket={cctv.kiri.ket_kabel} kategori="cctv_kiri_kabel" allPhotos={photos} onPreview={setPreviewUrl} />
           </div>
 
-          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+          <div style={{ marginBottom: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 340ms cubic-bezier(0.16, 1, 0.3, 1) both", animationDelay: "240ms" }}>
             <SectionLabel>Segel Kotak Sekring</SectionLabel>
             <RingkasanItemRow label="Status Segel Kotak Sekring" status={segelKotakSekring} kategori="segel_kotak_sekring" allPhotos={photos} onPreview={setPreviewUrl} isAktifToggle />
           </div>
@@ -833,7 +862,7 @@ const FormScreen = ({ onBack, onNav }) => {
             ← Edit
           </Btn>
           <Btn onClick={handleSubmit} variant="primary" icon="check" style={{ flex: 2 }} disabled={submitting}>
-            {submitting ? "Mengirim..." : "✅ Kirim Sekarang"}
+            {submitting ? <>{<Spinner />}Mengirim...</> : "✅ Kirim Sekarang"}
           </Btn>
         </div>
 
@@ -844,6 +873,7 @@ const FormScreen = ({ onBack, onNav }) => {
 
   return (
     <div style={{ minHeight: "100vh", background: theme.bg, display: "flex", flexDirection: "column" }}>
+      <style>{ANIM_STYLES}</style>
       <div style={{ background: theme.surface, padding: "48px 16px 16px", borderBottom: `1px solid ${theme.border}`, boxShadow: theme.shadow }}>
         <div onClick={() => { if (stepNum > 1) window.history.back(); else onBack(); }} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, cursor: "pointer", color: theme.textSub, fontSize: 13 }}>
           <Icon name="arrow" size={16} color={theme.textSub} /> Kembali
@@ -853,12 +883,12 @@ const FormScreen = ({ onBack, onNav }) => {
           {steps.map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : 0 }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: stepNum > i+1 ? theme.success : stepNum === i+1 ? theme.primary : theme.surfaceAlt, fontSize: 12, fontWeight: 700, color: stepNum >= i+1 ? "#fff" : theme.textMuted }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: stepNum > i+1 ? theme.success : stepNum === i+1 ? theme.primary : theme.surfaceAlt, fontSize: 12, fontWeight: 700, color: stepNum >= i+1 ? "#fff" : theme.textMuted, transition: "background 0.25s ease" }}>
                   {stepNum > i+1 ? <Icon name="check" size={13} color="#fff" /> : i+1}
                 </div>
-                <div style={{ fontSize: 10, marginTop: 4, color: stepNum === i+1 ? theme.primary : theme.textMuted, fontWeight: stepNum === i+1 ? 700 : 400 }}>{s}</div>
+                <div style={{ fontSize: 10, marginTop: 4, color: stepNum === i+1 ? theme.primary : theme.textMuted, fontWeight: stepNum === i+1 ? 700 : 400, transition: "color 0.25s ease" }}>{s}</div>
               </div>
-              {i < steps.length - 1 && <div style={{ flex: 1, height: 2, background: stepNum > i+1 ? theme.success : theme.border, margin: "0 6px", marginBottom: 14 }} />}
+              {i < steps.length - 1 && <div style={{ flex: 1, height: 2, background: stepNum > i+1 ? theme.success : theme.border, margin: "0 6px", marginBottom: 14, transition: "background 0.25s ease" }} />}
             </div>
           ))}
         </div>
@@ -869,18 +899,18 @@ const FormScreen = ({ onBack, onNav }) => {
         {expiredNotice}
 
         {step === 1 && (
-          <>
+          <div style={{ animation: "fadeSlideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both" }}>
             <SectionLabel>Data Kendaraan</SectionLabel>
             <div style={{ background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
               <Input label="Nomor Polisi" placeholder="Contoh: B 1234 XY" value={polisi} onChange={handlePolisiChange} />
               {lookupStatus === "loading" && <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12 }}>🔍 Mencari data kendaraan...</div>}
               {lookupStatus === "notfound" && (
-                <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 12, padding: "8px 12px", background: theme.dangerLight, borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginBottom: 12, padding: "8px 12px", background: theme.dangerLight, borderRadius: 8, animation: "fadeSlideDown 220ms ease both" }}>
                   ⚠️ Nomor Polisi tidak ditemukan. Hubungi admin Depot untuk mendaftarkan kendaraan ini.
                 </div>
               )}
               {lookupStatus === "found" && kendaraanData && (
-                <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 12, animation: "fadeSlideDown 240ms ease both" }}>
                   <div style={{ fontSize: 11, color: theme.success, fontWeight: 700, marginBottom: 10 }}>✅ Data kendaraan ditemukan</div>
                   <InfoRow label="Transportir" value={kendaraanData.transportir} />
                   <InfoRow label="Kapasitas MT" value={kendaraanData.kapasitas_mt} />
@@ -904,7 +934,7 @@ const FormScreen = ({ onBack, onNav }) => {
 
               {/* Peringatan & blokir kalau masa berlaku Head Truck/Tangki sudah lewat */}
               {lookupStatus === "found" && isKendaraanExpired && (
-                <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 10, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 700 }}>
+                <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 10, background: theme.dangerLight, color: theme.danger, fontSize: 12, fontWeight: 700, animation: "fadeSlideDown 220ms ease both" }}>
                   ⛔ {statusHeadTruck === "expired" && statusTangki === "expired"
                     ? "Masa berlaku Head Truck dan Tangki kendaraan ini sudah kedaluwarsa."
                     : statusHeadTruck === "expired"
@@ -926,7 +956,7 @@ const FormScreen = ({ onBack, onNav }) => {
 
             {/* Riwayat pengecekan sebelumnya — konteks untuk Teknisi sebelum cek ulang */}
             {lookupStatus === "found" && riwayatSebelumnya.length > 0 && (
-              <div style={{ marginTop: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}` }}>
+              <div style={{ marginTop: 16, background: theme.surface, borderRadius: 14, padding: 16, border: `1px solid ${theme.border}`, animation: "fadeSlideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) both" }}>
                 <SectionLabel>Riwayat Pengecekan Sebelumnya</SectionLabel>
                 {riwayatSebelumnya.map((r, i) => {
                   const normal = isRiwayatNormal(r);
@@ -950,21 +980,21 @@ const FormScreen = ({ onBack, onNav }) => {
                 })}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {step === 2 && (
-          <>
+          <div style={{ animation: "fadeSlideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both" }}>
             <SectionLabel>Kondisi GPS</SectionLabel>
             <StatusAktifWithFoto label="Status GPS" status={gps.status} onStatus={(v) => setGps((p) => ({ ...p, status: v }))} kategori="gps_status" onPhotos={setPhotos} allPhotos={photos} errorFoto={errors.gps_status_foto} onPreview={setPreviewUrl} requestAccess={requestAccess} />
             {errors.gps_status && <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginTop: -8, marginBottom: 10 }}>⚠️ Status GPS wajib dipilih.</div>}
             <CheckItemWithFoto label="Segel GPS" status={gps.segel.status} onStatus={setGpsField("segel", "status")} ket={gps.segel.ket} onKet={setGpsField("segel", "ket")} errorKet={errors.gps_segel_ket} kategori="gps_segel" onPhotos={setPhotos} allPhotos={photos} errorFoto={errors.gps_segel_foto} onPreview={setPreviewUrl} requestAccess={requestAccess} />
             <CheckItemWithFoto label="Kabel GPS" status={gps.kabel.status} onStatus={setGpsField("kabel", "status")} ket={gps.kabel.ket} onKet={setGpsField("kabel", "ket")} errorKet={errors.gps_kabel_ket} kategori="gps_kabel" onPhotos={setPhotos} allPhotos={photos} errorFoto={errors.gps_kabel_foto} onPreview={setPreviewUrl} requestAccess={requestAccess} />
-          </>
+          </div>
         )}
 
         {step === 3 && (
-          <>
+          <div style={{ animation: "fadeSlideUp 320ms cubic-bezier(0.16, 1, 0.3, 1) both" }}>
             <SectionLabel>CCTV Dashcam</SectionLabel>
             <StatusAktifWithFoto label="Status CCTV Dashcam" status={cctv.dashcam.status} onStatus={setCctvField("dashcam", "status")} kategori="cctv_dashcam_status" onPhotos={setPhotos} allPhotos={photos} errorFoto={errors.dashcam_status_foto} onPreview={setPreviewUrl} requestAccess={requestAccess} />
             <CheckItemWithFoto label="Segel Bricket" status={cctv.dashcam.segel_bricket} onStatus={setCctvField("dashcam", "segel_bricket")} ket={cctv.dashcam.ket_bricket} onKet={setCctvField("dashcam", "ket_bricket")} errorKet={errors.dashcam_bricket_ket} kategori="cctv_dashcam_bricket" onPhotos={setPhotos} allPhotos={photos} errorFoto={errors.dashcam_bricket_foto} onPreview={setPreviewUrl} requestAccess={requestAccess} />
@@ -980,7 +1010,7 @@ const FormScreen = ({ onBack, onNav }) => {
             <SectionLabel style={{ marginTop: 8 }}>Segel Kotak Sekring</SectionLabel>
             <StatusAktifWithFoto label="Status Segel Kotak Sekring" status={segelKotakSekring} onStatus={setSegelKotakSekring} kategori="segel_kotak_sekring" onPhotos={setPhotos} allPhotos={photos} errorFoto={errors.segel_kotak_foto} onPreview={setPreviewUrl} requestAccess={requestAccess} />
             {errors.segel_kotak && <div style={{ fontSize: 12, color: theme.danger, fontWeight: 600, marginTop: -8, marginBottom: 10 }}>⚠️ Status Segel Kotak Sekring wajib dipilih.</div>}
-          </>
+          </div>
         )}
       </div>
 
