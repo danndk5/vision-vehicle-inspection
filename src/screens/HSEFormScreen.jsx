@@ -842,11 +842,21 @@ const HSEFormScreen = ({ onBack, onNav }) => {
         // jadi satu baris per foto, dengan keterangan yang sama untuk semua
         // foto dalam temuan yang sama, agar tetap kompatibel dengan skema
         // tabel foto_inspeksi_hse yang sudah ada (url + keterangan).
-        const rows = fotoTemuan.flatMap((t) =>
+        //
+        // PENTING: `temuan_index` disertakan di setiap baris supaya semua
+        // foto yang berasal dari satu "sesi temuan" yang sama (angle-angle
+        // berbeda dari kondisi/kebocoran yang sama) tetap bisa dikelompokkan
+        // ulang persis seperti pengelompokan di form ini — bukan terpisah
+        // jadi satu "temuan" per foto saat dibuka di Tindak Lanjut.
+        // `jenis: "temuan"` membedakan baris ini dari foto bukti perbaikan
+        // yang nanti ditambahkan di layar Tindak Lanjut.
+        const rows = fotoTemuan.flatMap((t, tIdx) =>
           t.fotos.map((f) => ({
             inspeksi_hse_id: inspData.id,
             url:             f.url,
             keterangan:      t.keterangan,
+            temuan_index:    tIdx,
+            jenis:           "temuan",
           }))
         );
         const { error: temuanErr } = await supabase.from("foto_inspeksi_hse").insert(rows);
